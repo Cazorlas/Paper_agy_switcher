@@ -44,9 +44,10 @@ pub(crate) fn doctor_cmd(json: bool) -> Result<()> {
     let running = crate::running_agy::list()?;
     let count = agy_usage::profiles()?.len();
     let pool = crate::config::get().use_cfg.pool;
+    let source = crate::config::get().quota.source;
     if json {
         print_json(&serde_json::json!({"credential_store":description,"live_email":email,
-            "agy_path":path,"agy_version":version,"running_agy":running,"profiles":count,"pool":pool}));
+            "agy_path":path,"agy_version":version,"running_agy":running,"profiles":count,"pool":pool,"quota_source":source}));
     } else {
         println!("Credential store: {description}");
         println!("Live login: {}", email.as_deref().unwrap_or("not signed in"));
@@ -56,6 +57,7 @@ pub(crate) fn doctor_cmd(json: bool) -> Result<()> {
         }
         println!("Running agy processes:\n{}", crate::running_agy::format_processes(&running));
         println!("Profiles: {count}");
+        println!("quota: {}", source.label());
         println!("Scoring pool: {}", serde_json::to_value(pool)?.as_str().unwrap_or("claude"));
     }
     Ok(())

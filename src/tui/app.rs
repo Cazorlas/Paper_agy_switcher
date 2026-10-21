@@ -192,6 +192,8 @@ pub struct App {
     pub update_rx: Option<tokio::sync::oneshot::Receiver<String>>,
     pub auto_refresh_enabled: bool,
     pub auto_refresh_interval: Duration,
+    /// Quota source the rows on screen were fetched with.
+    pub quota_source: crate::config::QuotaSource,
     pub next_auto_refresh: Option<Instant>,
     pub detail_visible: bool,
     pub help_popup: Option<super::popup::PopupState>,
@@ -242,6 +244,7 @@ impl App {
             update_rx: None,
             auto_refresh_enabled: false,
             auto_refresh_interval: Duration::from_secs(cfg.tui.auto_refresh_interval_secs),
+            quota_source: cfg.quota.source,
             next_auto_refresh: None,
             detail_visible: true,
             help_popup: None,
@@ -624,6 +627,10 @@ impl App {
         let cfg = crate::config::get();
         self.auto_refresh_interval = Duration::from_secs(cfg.tui.auto_refresh_interval_secs.max(1));
         self.usage_limiter = Arc::new(Semaphore::new(cfg.network.max_concurrent.max(1)));
+        if self.quota_source != cfg.quota.source {
+            self.quota_source = cfg.quota.source;
+            self.refresh_all(Refresh::Cached);
+        }
         self.update_view();
     }
 
@@ -1031,7 +1038,7 @@ impl App {
                 entry.usage = UsageStatus::Idle;
             }
             if matches!(refresh, Refresh::Cached)
-                && let Some(cached) = crate::cache::get(&entry.alias)
+                && let Some(cached) = crate::cache::get(&crate::agy_usage::cache_key(crate::config::get().quota.source, &entry.alias))
             {
                 entry.usage = UsageStatus::Loaded(Box::new(cached));
 
@@ -2911,6 +2918,30 @@ mod tests {
                 .is_some_and(|message| message.contains("Switching to account"))
         );
         app.wait_for_switch_completion().await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cached_usage_is_read_by_quota_source_and_reloaded_on_change() {
+        use crate::config::QuotaSource;
+        let _home = EnvHome::new();
+        let cached = |plan: &str| UsageInfo { plan_type: Some(plan.into()), ..Default::default() };
+        crate::cache::put(&crate::agy_usage::cache_key(QuotaSource::Cli, "acct"), &cached("cli"));
+        crate::cache::put(&crate::agy_usage::cache_key(QuotaSource::Ide, "acct"), &cached("ide"));
+
+        let mut app = App::new();
+        app.accounts.push(AccountEntry { alias: "acct".into(), info: AccountInfo::default(), usage: UsageStatus::Idle, is_current: false });
+        app.view_indices.push(0);
+        app.refresh_indices(&[0], Refresh::Cached);
+        let UsageStatus::Loaded(usage) = &app.accounts[0].usage else { panic!("cached usage not loaded") };
+        assert_eq!(usage.plan_type.as_deref(), Some("cli"));
+
+        // A saved Settings change of quota.source (runtime config default is "cli") reloads the rows.
+        app.quota_source = QuotaSource::Ide;
+        app.accounts[0].usage = UsageStatus::Idle;
+        app.apply_saved_settings();
+        assert_eq!(app.quota_source, QuotaSource::Cli);
+        let UsageStatus::Loaded(usage) = &app.accounts[0].usage else { panic!("usage not reloaded after source change") };
+        assert_eq!(usage.plan_type.as_deref(), Some("cli"));
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -85,6 +85,17 @@ Chọn nhóm dùng để tìm tài khoản tốt nhất trong `~/.paper-agy-swit
 pool = "claude" # mặc định: nhóm Claude/GPT; dùng "gemini" cho Gemini
 ```
 
+### Nguồn quota
+
+Google tính quota Gemini riêng cho CLI `agy` và cho Antigravity IDE/ứng dụng desktop, nên hai nơi hiện số khác nhau. Mặc định công cụ hiện quota của **agy CLI**, giống con số `agy -p /usage` in ra. Đổi sang quota của IDE trong `~/.paper-agy-switch/config.toml` hoặc TUI Settings:
+
+```toml
+[quota]
+source = "cli" # mặc định: quota của agy CLI; dùng "ide" cho quota của Antigravity IDE
+```
+
+`list` và tiêu đề TUI cho biết đang hiện quota nào (`quota: agy CLI` hoặc `quota: Antigravity IDE`), `list --json` thêm trường `quota_source` ở mỗi dòng, và `doctor` in ra giá trị đang đặt. Ghi chú giao thức nằm trong [docs/agy-protocol.md](docs/agy-protocol.md).
+
 ### Giới hạn của bảng quota
 
 Quan sát một lần (2026-10-21, một account): agy từ chối Gemini 3.8 Flash với **"Individual quota reached ... Resets in 61h"** trong khi cả `retrieveUserQuotaSummary` lẫn `fetchAvailableModels` (theo từng model) đều báo model đó còn 100%, và các model Claude trên cùng account vẫn chạy bình thường. Google áp dụng những giới hạn mà các API này không trả về, nên bảng quota có thể hiện còn dư trong khi một model đã hết. Hãy thử model khác (`agy --model ...`) hoặc account khác.

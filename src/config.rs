@@ -15,6 +15,7 @@ static CLI_PROXY: OnceLock<Option<String>> = OnceLock::new();
 pub struct AppConfig {
     pub proxy: ProxyConfig,
     pub cache: CacheConfig,
+    pub quota: QuotaConfig,
     pub network: NetworkConfig,
     #[serde(default)]
     pub tui: TuiConfig,
@@ -36,6 +37,30 @@ impl AppConfig {
             self.tui.auto_refresh_interval_secs = 30;
         }
         self
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuotaConfig {
+    pub source: QuotaSource,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QuotaSource {
+    #[default]
+    Cli,
+    Ide,
+}
+
+impl QuotaSource {
+    pub fn as_str(self) -> &'static str {
+        match self { Self::Cli => "cli", Self::Ide => "ide" }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self { Self::Cli => "agy CLI", Self::Ide => "Antigravity IDE" }
     }
 }
 

@@ -118,6 +118,7 @@ fn list_table(rows: &[ListRow]) -> String {
 pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
     let store = agy_usage::store()?;
     let active = store.active_alias()?;
+    let source = crate::config::get().quota.source;
     let mut rows = Vec::new();
     let mut table_rows = Vec::new();
     let now = chrono::Local::now().timestamp();
@@ -133,7 +134,7 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
         };
         let tier = value.as_ref().and_then(|u| u.plan_type.as_deref());
         if json_mode {
-            rows.push(json!({"alias":p.alias,"email":p.email,"active":is_active,"tier":tier,
+            rows.push(json!({"quota_source":source,"alias":p.alias,"email":p.email,"active":is_active,"tier":tier,
                 "usage":value.as_ref().map(usage_json),"error":error}));
         } else {
             let gemini = value.as_ref().and_then(usage::gemini_pool);
@@ -149,7 +150,7 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
         }
     }
     if let Some(progress) = &mut progress { progress.finish(); }
-    if json_mode { output::print_json(&rows); } else { println!("{}", list_table(&table_rows)); }
+    if json_mode { output::print_json(&rows); } else { println!("quota: {}\n{}", source.label(), list_table(&table_rows)); }
     Ok(())
 }
 

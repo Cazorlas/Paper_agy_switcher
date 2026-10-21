@@ -1483,7 +1483,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "fs4",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "libc",
  "owo-colors",
  "ratatui",

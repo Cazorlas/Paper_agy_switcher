@@ -14,6 +14,7 @@ mod commands;
 mod config;
 mod error;
 mod launch;
+mod running_agy;
 mod logging;
 mod output;
 mod profile;

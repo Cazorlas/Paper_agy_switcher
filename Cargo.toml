@@ -19,6 +19,8 @@ test = false
 
 [dependencies]
 base64 = "0.23"
+sha2 = "=0.10.9"
+getrandom = "=0.3.4"
 clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 thiserror = "2"

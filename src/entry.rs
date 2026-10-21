@@ -152,6 +152,7 @@ fn command_name(cmd: &Commands) -> &'static str {
         Commands::Delete { .. } => "delete",
         Commands::Restore { .. } => "restore",
         Commands::Login { .. } => "login",
+        Commands::Add { .. } => "add",
         Commands::SelfUpdate { .. } => "self-update",
         Commands::Launch { .. } => "launch",
         Commands::Tui => "tui",
@@ -169,9 +170,7 @@ async fn dispatch(
     let started = std::time::Instant::now();
     tracing::debug!(command, "command started");
     match cmd {
-        Commands::Use {
-            alias,
-        } => commands::use_cmd(alias.as_deref(), json).await?,
+        Commands::Use { alias, restart_agy } => commands::use_cmd(alias.as_deref(), json, restart_agy).await?,
         Commands::Auto {
             threshold,
             margin,
@@ -198,6 +197,7 @@ async fn dispatch(
         }
         Commands::Delete { alias, yes } => commands::delete_cmd(&alias, yes, json)?,
         Commands::Login { alias } => commands::login_cmd(alias.as_deref(), json)?,
+        Commands::Add { alias, timeout_secs } => commands::add_cmd(alias.as_deref(), timeout_secs, json).await?,
         Commands::SelfUpdate { check } => commands::self_update_cmd(check, json)?,
         Commands::Launch { alias, args, .. } => {
             let args = merge_launch_args(args, launch_passthrough);

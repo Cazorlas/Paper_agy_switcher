@@ -41,11 +41,12 @@ pub(crate) fn doctor_cmd(json: bool) -> Result<()> {
         let output = crate::launch::agy_command(path).arg("--version").output().ok()?;
         output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
     });
+    let running = crate::running_agy::list()?;
     let count = agy_usage::profiles()?.len();
     let pool = crate::config::get().use_cfg.pool;
     if json {
         print_json(&serde_json::json!({"credential_store":description,"live_email":email,
-            "agy_path":path,"agy_version":version,"profiles":count,"pool":pool}));
+            "agy_path":path,"agy_version":version,"running_agy":running,"profiles":count,"pool":pool}));
     } else {
         println!("Credential store: {description}");
         println!("Live login: {}", email.as_deref().unwrap_or("not signed in"));
@@ -53,6 +54,7 @@ pub(crate) fn doctor_cmd(json: bool) -> Result<()> {
             Some(path) => println!("agy found on PATH: {} ({})", path.display(), version.as_deref().unwrap_or("version unavailable")),
             None => println!("agy not found on PATH"),
         }
+        println!("Running agy processes:\n{}", crate::running_agy::format_processes(&running));
         println!("Profiles: {count}");
         println!("Scoring pool: {}", serde_json::to_value(pool)?.as_str().unwrap_or("claude"));
     }

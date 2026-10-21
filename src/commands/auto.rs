@@ -145,8 +145,28 @@ pub(crate) async fn auto_cmd(opts: AutoOptions) -> Result<()> {
     }
     let mut last_switch: Option<Instant> = None;
     let mut last_blocked = false;
+    let mut switched_identity = None;
+    let mut overwritten = false;
 
     loop {
+        if let Some(expected) = &switched_identity {
+            let live = agy_usage::store()?.read_live()?.map(|blob| crate::agy_store::identity_of(&blob)).transpose()?;
+            if !live.as_ref().is_some_and(|live| crate::agy_store::same_account(expected, live)) {
+                if !overwritten {
+                    let email = live.as_ref().and_then(|i| i.email.as_deref()).unwrap_or("not signed in");
+                    let message = format!("credential was overwritten by a running agy (now {email})");
+                    emit(&opts, "overwritten", serde_json::json!({"email":email,"message":message}), format!("auto: {message}; automatic switching paused; restart agy and auto to resume"));
+                    tracing::warn!("{message}");
+                    overwritten = true;
+                }
+            }
+        }
+        if overwritten {
+            tokio::select! {
+                _ = tokio::time::sleep(opts.interval) => continue,
+                _ = tokio::signal::ctrl_c() => return Ok(()),
+            }
+        }
         let Some(current) = agy_usage::store()?.active_alias()? else {
             anyhow::bail!(
                 "the live Antigravity account is not a saved profile; run `paper-agy-switch login` first"
@@ -224,6 +244,7 @@ pub(crate) async fn auto_cmd(opts: AutoOptions) -> Result<()> {
                     Some(EXIT_NOTHING_TO_DO)
                 } else if apply(&current, &alias)? {
                     last_switch = Some(Instant::now());
+                    switched_identity = Some(crate::agy_store::identity_of(&agy_usage::store()?.profile_blob(&alias)?)?);
                     emit(
                         &opts,
                         "switched",

@@ -21,6 +21,7 @@ pub(crate) fn announce_switch(alias: &str, result: &agy_store::SwitchOutcome) ->
         }
         agy_store::SwitchOutcome::AlreadyActive => output::user_println(&format!("{alias} ({email}) is already active.")),
     }
+    crate::running_agy::warn(&crate::running_agy::list()?);
     Ok(())
 }
 
@@ -35,14 +36,16 @@ fn resolve_alias(requested: &str) -> Result<String> {
     Ok(requested.to_owned())
 }
 
-pub(crate) async fn use_cmd(alias: Option<&str>, json_mode: bool) -> Result<()> {
+pub(crate) async fn use_cmd(alias: Option<&str>, json_mode: bool, restart_agy: bool) -> Result<()> {
     let alias = match alias {
         Some(alias) => resolve_alias(alias)?,
         None => select_best_profile(json_mode).await?.alias,
     };
     let result = switch_alias(&alias)?;
+    let running = crate::running_agy::list()?;
+    let stopped = if restart_agy { crate::running_agy::restart(&running)? } else { Vec::new() };
     if json_mode {
-        output::print_json(&json!({"ok":true,"alias":alias,"action":match result {
+        output::print_json(&json!({"ok":true,"alias":alias,"running_agy":running.iter().map(|p| json!({"pid":p.pid,"parent":p.parent})).collect::<Vec<_>>(),"stopped_agy":stopped,"action":match result {
             agy_store::SwitchOutcome::AlreadyActive => "already_active", _ => "switched"
         }}));
     }

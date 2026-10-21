@@ -56,6 +56,9 @@ pub enum Commands {
     Use {
         /// Profile alias or its number in `list` (omit to auto-select the best)
         alias: Option<String>,
+        /// Stop running agy processes so new sessions use the switched account
+        #[arg(long)]
+        restart_agy: bool,
     },
     /// Watch the active account and switch to a better one before it hits its usage limit
     #[command(
@@ -123,6 +126,12 @@ Examples:
     Login {
         /// Profile alias (default: derived from the account email; a saved account keeps its alias)
         alias: Option<String>,
+    },
+    /// Sign in with Google in your browser and save a profile without changing live credentials
+    Add {
+        alias: Option<String>,
+        #[arg(long, default_value_t = 600)]
+        timeout_secs: u64,
     },
     /// Check for a newer version (`--check`) or update this binary
     #[command(

@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 
+mod add;
 mod auto;
+pub(crate) use add::add_cmd;
 mod login;
 mod misc;
 pub(crate) mod profile;

@@ -87,7 +87,7 @@ pool = "claude" # default: Claude/GPT group; use "gemini" for Gemini
 
 ### Quota limitations
 
-Measured behaviour: Antigravity can refuse a model with **"Individual quota reached"** even when the summary windows show room left. The dashboard shows the summary Google reports; it does not represent every limit.
+Observed once (2026-10-21, one account): agy refused Gemini 3.8 Flash with **"Individual quota reached ... Resets in 61h"** while both `retrieveUserQuotaSummary` and the per-model `fetchAvailableModels` reported that model at 100% remaining, and Claude models on the same account still worked. Google enforces limits these endpoints do not report, so the dashboard can show room that a model does not have. Try another model (`agy --model ...`) or another account.
 
 ## Manage accounts
 

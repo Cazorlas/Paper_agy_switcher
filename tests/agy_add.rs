@@ -147,7 +147,7 @@ fn happy_path_scopes_pkce_exact_blob_and_live_untouched() {
     assert_eq!(auth.as_str().split('?').next().unwrap(), "https://accounts.google.com/o/oauth2/v2/auth");
     for (key, value) in [("access_type", "offline"), ("prompt", "consent"), ("code_challenge_method", "S256"), ("response_type", "code"), ("client_id", agy_switch::agy_api::CLIENT_ID)] { assert_eq!(params[key], value); }
     let scopes: Vec<_> = params["scope"].split_whitespace().collect();
-    assert_eq!(scopes, ["openid", "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/cclog", "https://www.googleapis.com/auth/experimentsandconfigs"]);
+    assert_eq!(scopes, ["openid", "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/cclog", "https://www.googleapis.com/auth/experimentsandconfigs", "https://www.googleapis.com/auth/aicode"]);
     assert!(URL_SAFE_NO_PAD.decode(&params["state"]).unwrap().len() >= 16);
     assert!(callback(&auth, "/favicon.ico", None, "").starts_with("HTTP/1.1 404"));
     assert!(callback(&auth, "/oauth-callback", Some(&params["state"]), "code=fake-code").contains("Return to the terminal"));

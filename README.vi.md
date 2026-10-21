@@ -87,7 +87,7 @@ pool = "claude" # mặc định: nhóm Claude/GPT; dùng "gemini" cho Gemini
 
 ### Giới hạn của bảng quota
 
-Hành vi đã đo thực tế: Antigravity có thể từ chối một model với thông báo **"Individual quota reached"** dù các cửa sổ quota tổng hợp vẫn còn dung lượng. Bảng điều khiển hiển thị số liệu tổng hợp Google trả về; số liệu này không bao quát mọi giới hạn.
+Quan sát một lần (2026-10-21, một account): agy từ chối Gemini 3.8 Flash với **"Individual quota reached ... Resets in 61h"** trong khi cả `retrieveUserQuotaSummary` lẫn `fetchAvailableModels` (theo từng model) đều báo model đó còn 100%, và các model Claude trên cùng account vẫn chạy bình thường. Google áp dụng những giới hạn mà các API này không trả về, nên bảng quota có thể hiện còn dư trong khi một model đã hết. Hãy thử model khác (`agy --model ...`) hoặc account khác.
 
 ## Quản lý tài khoản
 

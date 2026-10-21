@@ -44,5 +44,12 @@ jobs:
           cd npm && npm version "$tag" --no-git-tag-version --allow-same-version
       - name: Package files
         run: cp README.md LICENSE THIRD_PARTY_NOTICES.md npm/
-      - run: npm publish --access public
+      - name: Publish (skipped when this version is already on npm)
         working-directory: npm
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if npm view "paper-agy-switch@$version" version >/dev/null 2>&1; then
+            echo "paper-agy-switch@$version is already published"
+          else
+            npm publish --access public
+          fi

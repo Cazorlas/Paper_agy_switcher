@@ -9,10 +9,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: windows-latest, target: x86_64-pc-windows-msvc, asset: paper-claude-switch-windows-x64.exe, bin: paper-claude-switch.exe }
-          - { os: macos-latest, target: x86_64-apple-darwin, asset: paper-claude-switch-macos-x64, bin: paper-claude-switch }
-          - { os: macos-latest, target: aarch64-apple-darwin, asset: paper-claude-switch-macos-arm64, bin: paper-claude-switch }
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, asset: paper-claude-switch-linux-x64, bin: paper-claude-switch }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, asset: paper-agy-switch-windows-x64.exe, bin: paper-agy-switch.exe }
+          - { os: macos-latest, target: x86_64-apple-darwin, asset: paper-agy-switch-macos-x64, bin: paper-agy-switch }
+          - { os: macos-latest, target: aarch64-apple-darwin, asset: paper-agy-switch-macos-arm64, bin: paper-agy-switch }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, asset: paper-agy-switch-linux-x64, bin: paper-agy-switch }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

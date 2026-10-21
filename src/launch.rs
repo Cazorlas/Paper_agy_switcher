@@ -28,7 +28,7 @@ async fn wait_for_child_or_shutdown(
 }
 
 /// Launch Claude Code for one alias from the TUI. Returns Claude Code's exit
-/// code instead of terminating the paper-claude-switch process on failure.
+/// code instead of terminating the paper-agy-switch process on failure.
 pub(crate) async fn launch_for_tui(
     alias: &str,
     extra_args: Vec<String>,

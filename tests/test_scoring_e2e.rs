@@ -1,7 +1,7 @@
 mod mock;
 
-use claude_switch::claude_usage::AccountInfo;
-use claude_switch::usage::{self, UsageInfo, WindowUsage};
+use agy_switch::claude_usage::AccountInfo;
+use agy_switch::usage::{self, UsageInfo, WindowUsage};
 use mock::scenarios;
 
 type CandidateInput = (String, UsageInfo, AccountInfo, i64);
@@ -56,7 +56,7 @@ fn rank(
 #[test]
 fn healthy_pool_prefers_least_used() {
     let scenario = scenarios::healthy_pool();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -78,7 +78,7 @@ fn healthy_pool_prefers_least_used() {
 #[test]
 fn team_priority_outranks_plus() {
     let scenario = scenarios::team_priority();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -102,7 +102,7 @@ fn team_priority_outranks_plus() {
 #[test]
 fn drain_window_prefers_soon_to_reset() {
     let scenario = scenarios::drain_window();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -126,7 +126,7 @@ fn drain_window_prefers_soon_to_reset() {
 #[test]
 fn seven_day_crisis_penalizes_near_7d_limit() {
     let scenario = scenarios::seven_day_crisis();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -150,7 +150,7 @@ fn seven_day_crisis_penalizes_near_7d_limit() {
 #[test]
 fn gradual_exhaustion_shifts_preference() {
     let scenario = scenarios::gradual_exhaustion();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     // Tick 0: A=30%, B=20% — both are healthy, A has more headroom in 5h window
     // because both have similar reset times but A starts with a higher burn rate.
@@ -206,7 +206,7 @@ fn gradual_exhaustion_shifts_preference() {
 #[test]
 fn all_exhausted_prefers_soonest_reset() {
     let scenario = scenarios::all_exhausted();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -229,7 +229,7 @@ fn all_exhausted_prefers_soonest_reset() {
 #[test]
 fn team_exhausted_falls_back_to_plus() {
     let scenario = scenarios::team_exhausted();
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
 
     let candidates: Vec<CandidateInput> = scenario
         .iter()
@@ -250,7 +250,7 @@ fn team_exhausted_falls_back_to_plus() {
 
 #[test]
 fn usage_plan_overrides_a_stale_saved_team_plan() {
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
     let response = mock::transformer::base_response("plus", 10.0, 18000, 10.0, 604800);
 
     let scored = usage::score_candidates(
@@ -266,7 +266,7 @@ fn usage_plan_overrides_a_stale_saved_team_plan() {
 
 #[test]
 fn pool_exhausted_counts_every_successfully_fetched_candidate() {
-    let now = claude_switch::auth::now_unix_secs();
+    let now = agy_switch::auth::now_unix_secs();
     let responses = [
         mock::transformer::base_response("plus", 100.0, 1800, 10.0, 604800),
         mock::transformer::base_response("plus", 100.0, 3600, 10.0, 604800),

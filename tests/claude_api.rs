@@ -3,7 +3,7 @@ mod mock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::http::StatusCode;
-use claude_switch::claude_api::{
+use agy_switch::claude_api::{
     ClaudeUsage, ModelWindow, RefreshOutcome, Spend, UsageError, Window,
     fetch_usage, parse_usage, refresh_oauth, usage_for_profile,
 };

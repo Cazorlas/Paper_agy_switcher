@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use claude_switch::claude_store::{
+use agy_switch::claude_store::{
     ClaudePaths, LockOptions, ProfileImporter, SwitchOutcome, account_from_parts, read_live,
     save_current, switch_to,
 };

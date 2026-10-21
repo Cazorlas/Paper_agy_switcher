@@ -5,10 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use axum::{Router, extract::RawQuery, routing::get};
-use claude_switch::claude_api::{
+use agy_switch::claude_api::{
     Endpoints, ResetGrant, fetch_usage, new_request_id, parse_usage, usable_reset_grant,
 };
-use claude_switch::claude_usage::resets_label;
+use agy_switch::claude_usage::resets_label;
 use serde_json::json;
 
 fn grant(left: u32, total: u32, ends_at: Option<&str>) -> ResetGrant {
@@ -90,7 +90,7 @@ fn without_grant_data_the_column_is_a_dash() {
     assert_eq!(resets_label(Some(&[]), None).0, "0");
 }
 
-fn usage_with_block(block: serde_json::Value) -> claude_switch::claude_api::ClaudeUsage {
+fn usage_with_block(block: serde_json::Value) -> agy_switch::claude_api::ClaudeUsage {
     parse_usage(&json!({"five_hour": {"utilization": 10.0}, "cedar_ember": block})).unwrap()
 }
 

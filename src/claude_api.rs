@@ -483,7 +483,7 @@ pub async fn fetch_profile(
         .header("anthropic-beta", "oauth-2025-04-20")
         .header(
             "User-Agent",
-            concat!("paper-claude-switch/", env!("CARGO_PKG_VERSION")),
+            concat!("paper-agy-switch/", env!("CARGO_PKG_VERSION")),
         )
         .send()
         .await

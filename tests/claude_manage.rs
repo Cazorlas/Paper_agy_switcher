@@ -1,5 +1,5 @@
 // Account management, auto-switching and launch on Claude profiles. Every
-// spawned command points CLAUDE_CONFIG_DIR and PAPER_CLAUDE_SWITCH_HOME at a
+// spawned command points CLAUDE_CONFIG_DIR and PAPER_AGY_SWITCH_HOME at a
 // temp folder, so the real Claude login is never read or written.
 
 use std::collections::HashMap;
@@ -176,14 +176,14 @@ impl Fixture {
     }
 
     fn command(&self, args: &[&str]) -> Command {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-claude-switch"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-agy-switch"));
         cmd.args(args)
             .current_dir(self.root.path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("CLAUDE_CONFIG_DIR", self.path("claude"))
-            .env("PAPER_CLAUDE_SWITCH_HOME", self.path("app"))
+            .env("PAPER_AGY_SWITCH_HOME", self.path("app"))
             .env("HOME", self.path("home"))
             .env("USERPROFILE", self.path("home"))
             .env("CODEX_HOME", self.path("codex"))
@@ -498,7 +498,7 @@ async fn launch_switches_then_runs_claude_with_passthrough_args() {
     f.two_profiles();
     // Stand-in for `claude`: this binary answers `--version` and exits 0.
     let mut cmd = f.command(&["launch", "work", "--", "--version"]);
-    cmd.env("CS_CLAUDE_BIN", env!("CARGO_BIN_EXE_paper-claude-switch"));
+    cmd.env("CS_CLAUDE_BIN", env!("CARGO_BIN_EXE_paper-agy-switch"));
     let output = output_with_timeout(&mut cmd);
     success(&output);
     assert!(

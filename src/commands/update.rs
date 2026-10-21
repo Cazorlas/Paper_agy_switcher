@@ -3,7 +3,7 @@ use anyhow::Result;
 
 // ── self-update ──────────────────────────────────────────
 
-const UPDATE_HINT: &str = "update with `paper-claude-switch self-update` from the npm install, or reinstall (`npm i -g paper-claude-switch@latest` / `cargo install --git https://github.com/Cazorlas/Paper.Claude-switcher`)";
+const UPDATE_HINT: &str = "update with `paper-agy-switch self-update` from the npm install, or reinstall (`npm i -g paper-agy-switch@latest` / `cargo install --git https://github.com/Cazorlas/Paper_agy_switcher`)";
 
 /// Reached only when the binary runs directly: an npm install routes
 /// `self-update` to the launcher, which owns the update.
@@ -18,7 +18,7 @@ pub(crate) fn self_update_cmd(check: bool, json: bool) -> Result<()> {
             }));
         } else {
             println!(
-                "paper-claude-switch {} (this binary was run directly; {UPDATE_HINT})",
+                "paper-agy-switch {} (this binary was run directly; {UPDATE_HINT})",
                 crate::update::current_version()
             );
         }

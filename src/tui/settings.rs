@@ -643,9 +643,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = tempfile::tempdir().unwrap();
-        let prev_cs = std::env::var_os("PAPER_CLAUDE_SWITCH_HOME");
+        let prev_cs = std::env::var_os("PAPER_AGY_SWITCH_HOME");
         unsafe {
-            std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", dir.path());
+            std::env::set_var("PAPER_AGY_SWITCH_HOME", dir.path());
         }
         let mut settings = SettingsState::from_config(AppConfig::default());
 
@@ -683,8 +683,8 @@ mod tests {
         assert!(!loaded.use_cfg.team_priority);
         unsafe {
             match prev_cs {
-                Some(v) => std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", v),
-                None => std::env::remove_var("PAPER_CLAUDE_SWITCH_HOME"),
+                Some(v) => std::env::set_var("PAPER_AGY_SWITCH_HOME", v),
+                None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
             }
         }
     }

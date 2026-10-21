@@ -22,9 +22,9 @@ jobs:
 
           # 1. latest GitHub release vs npm, and its four assets
           tag=$(gh api "repos/$REPO/releases/latest" --jq .tag_name)
-          npm_latest=$(curl -fsS https://registry.npmjs.org/paper-claude-switch | jq -r '."dist-tags".latest')
+          npm_latest=$(curl -fsS https://registry.npmjs.org/paper-agy-switch | jq -r '."dist-tags".latest')
           [ "v$npm_latest" = "$tag" ] || add "npm latest is **$npm_latest** but the latest release is **$tag**"
-          for a in paper-claude-switch-windows-x64.exe paper-claude-switch-macos-x64 paper-claude-switch-macos-arm64 paper-claude-switch-linux-x64; do
+          for a in paper-agy-switch-windows-x64.exe paper-agy-switch-macos-x64 paper-agy-switch-macos-arm64 paper-agy-switch-linux-x64; do
             gh api "repos/$REPO/releases/latest" --jq '.assets[].name' | grep -qx "$a" || add "release $tag is missing asset \`$a\`"
           done
 

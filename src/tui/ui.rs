@@ -311,7 +311,7 @@ fn table_text_widths(
 fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
     if app.accounts.is_empty() {
         let block = Block::default()
-            .title(" paper-claude-switch ")
+            .title(" paper-agy-switch ")
             .borders(Borders::ALL)
             .border_style(base().fg(C_BLUE))
             .style(base());

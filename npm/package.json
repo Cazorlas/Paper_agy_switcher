@@ -1,13 +1,13 @@
 {
-  "name": "paper-claude-switch",
-  "version": "0.6.3",
-  "description": "Multi-account switcher for Claude Code CLI and VS Code extension with automatic switching before the usage limit",
-  "license": "MIT",
-  "repository": "github:Cazorlas/Paper.Claude-switcher",
-  "bin": { "paper-claude-switch": "bin/cli.js" },
+  "name": "paper-agy-switch",
+  "version": "0.1.0",
+  "description": "Google Antigravity (agy CLI and desktop) account switcher - multi-profile manager with quota dashboard",
+  "license": "Apache-2.0",
+  "repository": "github:Cazorlas/Paper_agy_switcher",
+  "bin": { "paper-agy-switch": "bin/cli.js" },
   "scripts": { "postinstall": "node install.js" },
   "files": ["bin/cli.js", "install.js", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],
   "engines": { "node": ">=18" },
   "os": ["win32", "darwin", "linux"],
-  "keywords": ["claude", "claude-code", "anthropic", "account", "switcher", "cli", "vscode"]
+  "keywords": ["antigravity", "agy", "gemini", "account", "switcher"]
 }

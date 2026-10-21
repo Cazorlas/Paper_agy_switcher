@@ -7,7 +7,7 @@ use tracing_subscriber::EnvFilter;
 
 // These events retain command failures in file/TUI history. The CLI already
 // renders the same error as a human message or JSON, including in debug mode.
-const REPORTED_ERROR_TARGET: &str = "claude_switch::reported_error";
+const REPORTED_ERROR_TARGET: &str = "agy_switch::reported_error";
 
 struct LogFilters {
     stderr: EnvFilter,
@@ -17,7 +17,7 @@ struct LogFilters {
 
 fn log_filters(debug: bool, rust_log: Option<&str>) -> LogFilters {
     let all_sinks = if debug {
-        Some("claude_switch=debug")
+        Some("agy_switch=debug")
     } else {
         rust_log
     };
@@ -30,9 +30,9 @@ fn log_filters(debug: bool, rust_log: Option<&str>) -> LogFilters {
     }
 
     LogFilters {
-        stderr: EnvFilter::new("claude_switch=error"),
-        file: EnvFilter::new("claude_switch=info"),
-        tui: EnvFilter::new("claude_switch=info"),
+        stderr: EnvFilter::new("agy_switch=error"),
+        file: EnvFilter::new("agy_switch=info"),
+        tui: EnvFilter::new("agy_switch=info"),
     }
 }
 
@@ -152,10 +152,8 @@ fn command_name(cmd: &Commands) -> &'static str {
         Commands::Delete { .. } => "delete",
         Commands::Restore { .. } => "restore",
         Commands::Login { .. } => "login",
-        Commands::ImportOrca { .. } => "import-orca",
         Commands::SelfUpdate { .. } => "self-update",
         Commands::Launch { .. } => "launch",
-        Commands::Statusline { .. } => "statusline",
         Commands::Tui => "tui",
         Commands::Open => "open",
         Commands::Doctor => "doctor",
@@ -184,11 +182,9 @@ async fn dispatch(
         && !matches!(
             &cmd,
             Commands::Login { .. }
-                | Commands::ImportOrca { .. }
                 | Commands::SelfUpdate { .. }
                 | Commands::Open
                 | Commands::Launch { .. }
-                | Commands::Statusline { .. }
                 | Commands::Doctor
         )
     {
@@ -225,15 +221,11 @@ async fn dispatch(
         }
         Commands::Delete { alias, yes } => commands::delete_cmd(&alias, yes, json)?,
         Commands::Login { alias } => commands::login_cmd(alias.as_deref(), json)?,
-        Commands::ImportOrca { from, dry_run } => {
-            commands::import_orca_cmd(from.as_deref(), dry_run, json)?
-        }
         Commands::SelfUpdate { check } => commands::self_update_cmd(check, json)?,
         Commands::Launch { alias, args, .. } => {
             let args = merge_launch_args(args, launch_passthrough);
             commands::launch_cmd(alias.as_deref(), args, json).await?
         }
-        Commands::Statusline { tee, args } => commands::statusline_cmd(tee, args)?,
         Commands::Tui => tui::run_tui().await?,
         Commands::Open => commands::open_cmd()?,
         Commands::Doctor => commands::doctor_cmd(json)?,
@@ -294,7 +286,7 @@ fn offer_to_save_live_account() {
     // Non-interactive stdin — don't prompt, don't silently mutate state
     if !io::stdin().is_terminal() {
         user_println(&format!(
-            "Detected an unsaved Claude account ({label}) (run `paper-claude-switch login` to save it)."
+            "Detected an unsaved Claude account ({label}) (run `paper-agy-switch login` to save it)."
         ));
         return;
     }
@@ -327,25 +319,25 @@ mod tests {
     fn log_filters_keep_cli_quiet_but_preserve_operation_history() {
         let filters = log_filters(false, None);
 
-        assert_eq!(filters.stderr.to_string(), "claude_switch=error");
-        assert_eq!(filters.file.to_string(), "claude_switch=info");
-        assert_eq!(filters.tui.to_string(), "claude_switch=info");
+        assert_eq!(filters.stderr.to_string(), "agy_switch=error");
+        assert_eq!(filters.file.to_string(), "agy_switch=info");
+        assert_eq!(filters.tui.to_string(), "agy_switch=info");
     }
 
     #[test]
     fn log_filter_precedence_is_debug_then_rust_log_then_defaults() {
-        let debug = log_filters(true, Some("claude_switch=trace"));
-        assert_eq!(debug.stderr.to_string(), "claude_switch=debug");
-        assert_eq!(debug.file.to_string(), "claude_switch=debug");
-        assert_eq!(debug.tui.to_string(), "claude_switch=debug");
+        let debug = log_filters(true, Some("agy_switch=trace"));
+        assert_eq!(debug.stderr.to_string(), "agy_switch=debug");
+        assert_eq!(debug.file.to_string(), "agy_switch=debug");
+        assert_eq!(debug.tui.to_string(), "agy_switch=debug");
 
-        let rust_log = log_filters(false, Some("claude_switch=warn"));
-        assert_eq!(rust_log.stderr.to_string(), "claude_switch=warn");
-        assert_eq!(rust_log.file.to_string(), "claude_switch=warn");
-        assert_eq!(rust_log.tui.to_string(), "claude_switch=warn");
+        let rust_log = log_filters(false, Some("agy_switch=warn"));
+        assert_eq!(rust_log.stderr.to_string(), "agy_switch=warn");
+        assert_eq!(rust_log.file.to_string(), "agy_switch=warn");
+        assert_eq!(rust_log.tui.to_string(), "agy_switch=warn");
 
         let defaults = log_filters(false, None);
-        assert_eq!(defaults.stderr.to_string(), "claude_switch=error");
-        assert_eq!(defaults.file.to_string(), "claude_switch=info");
+        assert_eq!(defaults.stderr.to_string(), "agy_switch=error");
+        assert_eq!(defaults.file.to_string(), "agy_switch=info");
     }
 }

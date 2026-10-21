@@ -49,7 +49,7 @@ fn write_cache_entry(
             }
         }
     });
-    write_json(home.join(".paper-claude-switch/cache.json"), &cache);
+    write_json(home.join(".paper-agy-switch/cache.json"), &cache);
 }
 
 /// Claude OAuth block whose access token is valid until the year 2100, so
@@ -80,7 +80,7 @@ fn write_live_login(home: &Path, email: &str, uuid: &str, token: &str) {
 }
 
 fn write_claude_profile(home: &Path, alias: &str, email: &str, uuid: &str, token: &str) {
-    let dir = home.join(".paper-claude-switch/profiles").join(alias);
+    let dir = home.join(".paper-agy-switch/profiles").join(alias);
     write_json(
         dir.join("credentials.json"),
         &serde_json::json!({"claudeAiOauth": claude_oauth(token)}),
@@ -118,7 +118,7 @@ fn dead_endpoint() -> &'static str {
 }
 
 fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_paper-claude-switch")
+    env!("CARGO_BIN_EXE_paper-agy-switch")
 }
 
 fn command(home: &Path, args: &[&str]) -> Command {
@@ -133,7 +133,7 @@ fn command(home: &Path, args: &[&str]) -> Command {
     cmd.env("CS_CLAUDE_API_BASE", dead_endpoint());
     cmd.env("CS_CLAUDE_TOKEN_URL", format!("{}/token", dead_endpoint()));
     cmd.env("NO_COLOR", "1");
-    cmd.env("PAPER_CLAUDE_SWITCH_HOME", home.join(".paper-claude-switch"));
+    cmd.env("PAPER_AGY_SWITCH_HOME", home.join(".paper-agy-switch"));
     cmd.env_remove("HTTP_PROXY");
     cmd.env_remove("HTTPS_PROXY");
     cmd.env_remove("ALL_PROXY");
@@ -161,7 +161,7 @@ fn command_failure_is_reported_once_and_kept_in_file_logs() {
             let mut cmd = command(home.path(), &args);
             cmd.env_remove("RUST_LOG");
             if logging == "rust-log" {
-                cmd.env("RUST_LOG", "claude_switch=trace");
+                cmd.env("RUST_LOG", "agy_switch=trace");
             }
             let output = output_with_timeout(&mut cmd, Duration::from_secs(15));
             assert!(!output.status.success());
@@ -182,7 +182,7 @@ fn command_failure_is_reported_once_and_kept_in_file_logs() {
                     .to_string()
             };
             assert!(!stderr.contains("command failed"), "{stderr}");
-            let logs = fs::read_dir(home.path().join(".paper-claude-switch/logs"))
+            let logs = fs::read_dir(home.path().join(".paper-agy-switch/logs"))
                 .unwrap()
                 .filter_map(|entry| fs::read_to_string(entry.unwrap().path()).ok())
                 .collect::<String>();
@@ -250,8 +250,8 @@ fn json_use_keeps_stdout_machine_readable() {
     write_live_login(&home, "alice@example.com", "U_alice", "tokAlice");
     write_claude_profile(&home, "alice", "alice@example.com", "U_alice", "tokAlice");
     write_claude_profile(&home, "bob", "bob@example.com", "U_bob", "tokBob");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "alice").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "alice").unwrap();
 
     let output = run(&home, &["--json", "use", "bob"]);
     assert!(output.status.success());
@@ -276,7 +276,7 @@ fn json_use_rejects_untracked_live_auth_without_prompting() {
         parse_stdout_json(&output),
         serde_json::json!({
             "ok": false,
-            "error": "the live Claude account (bob@example.com) is not saved; run `paper-claude-switch login` first"
+            "error": "the live Claude account (bob@example.com) is not saved; run `paper-agy-switch login` first"
         })
     );
     assert!(!String::from_utf8_lossy(&output.stderr).contains("[y/N]"));
@@ -292,7 +292,7 @@ fn json_list_auto_track_keeps_stdout_machine_readable() {
     write_live_login(&home, "dave@example.com", "U_dave", "tokDave");
     write_claude_profile(&home, "carol", "carol@example.com", "U_carol", "unused");
     let mut credentials: Value = serde_json::from_str(
-        &fs::read_to_string(home.join(".paper-claude-switch/profiles/carol/credentials.json"))
+        &fs::read_to_string(home.join(".paper-agy-switch/profiles/carol/credentials.json"))
             .unwrap(),
     )
     .unwrap();
@@ -301,7 +301,7 @@ fn json_list_auto_track_keeps_stdout_machine_readable() {
         .unwrap()
         .remove("accessToken");
     write_json(
-        home.join(".paper-claude-switch/profiles/carol/credentials.json"),
+        home.join(".paper-agy-switch/profiles/carol/credentials.json"),
         &credentials,
     );
 
@@ -318,7 +318,7 @@ fn json_list_auto_track_keeps_stdout_machine_readable() {
             .unwrap()
             .contains("Unauthorized")
     );
-    assert!(!home.join(".paper-claude-switch/profiles/dave").exists());
+    assert!(!home.join(".paper-agy-switch/profiles/dave").exists());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -327,10 +327,10 @@ fn json_list_auto_track_keeps_stdout_machine_readable() {
 fn zero_max_concurrent_is_sanitized() {
     let home = temp_home("zero-max-concurrent");
     write_claude_profile(&home, "dave", "dave@example.com", "U_dave", "tokDave");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "dave").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "dave").unwrap();
     fs::write(
-        home.join(".paper-claude-switch/config.toml"),
+        home.join(".paper-agy-switch/config.toml"),
         "[network]\nmax_concurrent = 0\n",
     )
     .unwrap();
@@ -349,9 +349,9 @@ fn zero_max_concurrent_is_sanitized() {
 #[test]
 fn invalid_existing_config_fails_instead_of_using_defaults() {
     let home = temp_home("invalid-config");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
     fs::write(
-        home.join(".paper-claude-switch/config.toml"),
+        home.join(".paper-agy-switch/config.toml"),
         "[network]\nmax_concurrent = \"many\"\n",
     )
     .unwrap();
@@ -369,9 +369,9 @@ fn invalid_existing_config_fails_instead_of_using_defaults() {
 #[test]
 fn invalid_config_error_does_not_echo_proxy_credentials() {
     let home = temp_home("invalid-config-secret");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
     fs::write(
-        home.join(".paper-claude-switch/config.toml"),
+        home.join(".paper-agy-switch/config.toml"),
         "[proxy]\nurl = \"http://user:SENTINEL_PASSWORD@example.com\n",
     )
     .unwrap();
@@ -393,10 +393,10 @@ fn dangling_config_symlink_fails_instead_of_using_defaults() {
     use std::os::unix::fs::symlink;
 
     let home = temp_home("dangling-config-symlink");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
     symlink(
         home.join("missing-config.toml"),
-        home.join(".paper-claude-switch/config.toml"),
+        home.join(".paper-agy-switch/config.toml"),
     )
     .unwrap();
 
@@ -423,7 +423,7 @@ fn json_delete_requires_explicit_yes_and_preserves_profile() {
             "error": "confirmation required; rerun with --yes to delete profile 'gina'"
         })
     );
-    assert!(home.join(".paper-claude-switch/profiles/gina/credentials.json").exists());
+    assert!(home.join(".paper-agy-switch/profiles/gina/credentials.json").exists());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -441,7 +441,7 @@ fn non_interactive_delete_requires_explicit_yes_and_preserves_profile() {
         String::from_utf8_lossy(&output.stderr)
             .contains("confirmation required; rerun with --yes to delete profile 'gina'")
     );
-    assert!(home.join(".paper-claude-switch/profiles/gina/credentials.json").exists());
+    assert!(home.join(".paper-agy-switch/profiles/gina/credentials.json").exists());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -457,8 +457,8 @@ fn delete_with_yes_archives_inactive_profile_for_recovery() {
         parse_stdout_json(&output),
         serde_json::json!({"ok": true, "alias": "gina", "action": "deleted"})
     );
-    assert!(!home.join(".paper-claude-switch/profiles/gina").exists());
-    let deleted_dir = home.join(".paper-claude-switch/deleted-profiles");
+    assert!(!home.join(".paper-agy-switch/profiles/gina").exists());
+    let deleted_dir = home.join(".paper-agy-switch/deleted-profiles");
     let archived: Vec<_> = fs::read_dir(&deleted_dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -481,15 +481,15 @@ fn delete_rejects_active_profile() {
     let home = temp_home("delete-active");
     write_claude_profile(&home, "gina", "gina@example.com", "U-gina", "tok-gina");
     write_live_login(&home, "gina@example.com", "U-gina", "tok-gina");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "gina").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "gina").unwrap();
 
     let output = run(&home, &["delete", "gina", "--yes"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("cannot delete the active profile"));
-    assert!(home.join(".paper-claude-switch/profiles/gina/credentials.json").exists());
+    assert!(home.join(".paper-agy-switch/profiles/gina/credentials.json").exists());
     assert_eq!(
-        fs::read_to_string(home.join(".paper-claude-switch/current")).unwrap(),
+        fs::read_to_string(home.join(".paper-agy-switch/current")).unwrap(),
         "gina"
     );
 
@@ -506,7 +506,7 @@ fn automatic_use_without_profiles_explains_how_to_get_started() {
         parse_stdout_json(&output),
         serde_json::json!({
             "ok": false,
-            "error": "no saved profiles; run `paper-claude-switch login` first"
+            "error": "no saved profiles; run `paper-agy-switch login` first"
         })
     );
 
@@ -517,10 +517,10 @@ fn automatic_use_without_profiles_explains_how_to_get_started() {
 fn json_list_uses_per_account_cached_refresh_time() {
     let home = temp_home("json-list-cache-ts");
     write_claude_profile(&home, "ivy", "ivy@example.com", "U_ivy", "tokIvy");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "ivy").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "ivy").unwrap();
     fs::write(
-        home.join(".paper-claude-switch/config.toml"),
+        home.join(".paper-agy-switch/config.toml"),
         "[cache]\nttl = 999999999\n",
     )
     .unwrap();
@@ -564,7 +564,7 @@ fn non_interactive_stdin_does_not_save_new_account() {
         "expected detection message in stdout, got: {stdout}"
     );
     // Should NOT have saved — no profiles directory should exist
-    let profiles_dir = home.join(".paper-claude-switch/profiles");
+    let profiles_dir = home.join(".paper-agy-switch/profiles");
     assert!(
         !profiles_dir.exists() || fs::read_dir(&profiles_dir).unwrap().count() == 0,
         "expected no profiles saved, but profiles dir has content"
@@ -578,8 +578,8 @@ fn non_interactive_stdin_does_not_update_existing_profile() {
     let home = temp_home("non-interactive-update");
     // Create profile for alice
     write_claude_profile(&home, "alice", "alice@example.com", "U_alice", "tokOld");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "alice").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "alice").unwrap();
 
     // Claude Code rotated the live tokens for the same account
     write_live_login(&home, "alice@example.com", "U_alice", "tokRotated");
@@ -593,7 +593,7 @@ fn non_interactive_stdin_does_not_update_existing_profile() {
 
     // Profile file should still have the original content (not updated)
     let profile_content: Value = serde_json::from_str(
-        &fs::read_to_string(home.join(".paper-claude-switch/profiles/alice/credentials.json"))
+        &fs::read_to_string(home.join(".paper-agy-switch/profiles/alice/credentials.json"))
             .unwrap(),
     )
     .unwrap();
@@ -611,8 +611,8 @@ fn list_progress_counts_only_stale_accounts() {
     let home = temp_home("list-progress-stale-only");
     write_claude_profile(&home, "fresh", "fresh@example.com", "U_fresh", "tokFresh");
     write_claude_profile(&home, "stale", "stale@example.com", "U_stale", "tokStale");
-    fs::create_dir_all(home.join(".paper-claude-switch")).unwrap();
-    fs::write(home.join(".paper-claude-switch/current"), "fresh").unwrap();
+    fs::create_dir_all(home.join(".paper-agy-switch")).unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "fresh").unwrap();
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -637,11 +637,11 @@ fn deleted_profile_can_be_listed_and_restored() {
         write_claude_profile(&home, alias, &format!("{alias}@example.com"), id, alias);
     }
     write_live_login(&home, "alice@example.com", "U-a", "alice");
-    fs::write(home.join(".paper-claude-switch/current"), "alice").unwrap();
+    fs::write(home.join(".paper-agy-switch/current"), "alice").unwrap();
 
     let output = run(&home, &["delete", "bob", "--yes"]);
     assert!(output.status.success(), "{output:?}");
-    assert!(!home.join(".paper-claude-switch/profiles/bob").exists());
+    assert!(!home.join(".paper-agy-switch/profiles/bob").exists());
 
     let output = run(&home, &["--json", "restore"]);
     assert_eq!(
@@ -651,7 +651,7 @@ fn deleted_profile_can_be_listed_and_restored() {
 
     let output = run(&home, &["--json", "restore", "bob"]);
     assert!(output.status.success(), "{output:?}");
-    assert!(home.join(".paper-claude-switch/profiles/bob/credentials.json").exists());
+    assert!(home.join(".paper-agy-switch/profiles/bob/credentials.json").exists());
 
     let output = run(&home, &["--json", "restore", "bob"]);
     assert!(!output.status.success(), "no archive is left to restore");

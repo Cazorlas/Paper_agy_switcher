@@ -48,7 +48,7 @@ impl Accounts {
         if let Some(live) = &self.live {
             if self.active.is_none() {
                 anyhow::bail!(
-                    "the live Claude account ({}) is not saved; run `paper-claude-switch login` first",
+                    "the live Claude account ({}) is not saved; run `paper-agy-switch login` first",
                     live.email.as_deref().unwrap_or("unknown email")
                 );
             }
@@ -117,7 +117,7 @@ pub(crate) async fn list_cmd(force: bool, json: bool) -> Result<()> {
         } else {
             println!(
                 "{}",
-                color::dim("(no saved profiles; run `paper-claude-switch login`)")
+                color::dim("(no saved profiles; run `paper-agy-switch login`)")
             );
         }
         return Ok(());
@@ -236,7 +236,7 @@ pub(crate) fn restore_cmd(alias: Option<&str>, as_alias: Option<&str>, json: boo
             }
             println!(
                 "{}",
-                color::dim("restore one with `paper-claude-switch restore <alias>`")
+                color::dim("restore one with `paper-agy-switch restore <alias>`")
             );
         }
         return Ok(());
@@ -360,7 +360,7 @@ pub(crate) struct SelectOutcome {
 
 async fn rank_accounts(accounts: &Accounts, json: bool) -> Result<SelectOutcome> {
     if accounts.profiles.is_empty() {
-        anyhow::bail!("no saved profiles; run `paper-claude-switch login` first");
+        anyhow::bail!("no saved profiles; run `paper-agy-switch login` first");
     }
 
     let mut progress = if json {

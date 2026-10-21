@@ -17,8 +17,8 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
-use claude_switch::claude_api::{Endpoints, ProfileStatus, fetch_profile};
-use claude_switch::claude_usage::{next_renewal, plan_label};
+use agy_switch::claude_api::{Endpoints, ProfileStatus, fetch_profile};
+use agy_switch::claude_usage::{next_renewal, plan_label};
 use serde_json::{Value, json};
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
@@ -295,11 +295,11 @@ impl Fixture {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-claude-switch"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-agy-switch"));
         cmd.args(args).current_dir(self.root.path())
             .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
             .env("CLAUDE_CONFIG_DIR", self.path("claude"))
-            .env("PAPER_CLAUDE_SWITCH_HOME", self.path("app"))
+            .env("PAPER_AGY_SWITCH_HOME", self.path("app"))
             .env("HOME", self.path("home"))
             .env("USERPROFILE", self.path("home"))
             .env("CODEX_HOME", self.path("codex"))

@@ -29,9 +29,9 @@ fn tui_sigterm_restores_its_lifecycle_and_exits_143() {
     // SAFETY: openpty returned fresh owned descriptors on success.
     let mut master = unsafe { File::from_raw_fd(master_fd) };
     let slave = unsafe { File::from_raw_fd(slave_fd) };
-    let mut child = Command::new(env!("CARGO_BIN_EXE_paper-claude-switch"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_paper-agy-switch"))
         .arg("tui")
-        .env("PAPER_CLAUDE_SWITCH_HOME", home.path())
+        .env("PAPER_AGY_SWITCH_HOME", home.path())
         .env("CODEX_HOME", home.path().join("codex"))
         .stdin(Stdio::from(slave.try_clone().expect("clone PTY")))
         .stdout(Stdio::from(slave.try_clone().expect("clone PTY")))

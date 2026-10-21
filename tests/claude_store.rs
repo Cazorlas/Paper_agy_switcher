@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use claude_switch::claude_store::{
+use agy_switch::claude_store::{
     ClaudePaths, LockOptions, SaveAction, SwitchOutcome, save_current, switch_to, write_live,
 };
 use serde_json::{Value, json};

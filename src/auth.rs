@@ -6,10 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use crate::error::CsError;
 
-/// User-Agent: `paper-claude-switch/<version> (<os>; <arch>)`.
+/// User-Agent: `paper-agy-switch/<version> (<os>; <arch>)`.
 pub(crate) fn user_agent() -> String {
     format!(
-        "paper-claude-switch/{} ({}; {})",
+        "paper-agy-switch/{} ({}; {})",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH
@@ -27,24 +27,24 @@ fn claude_config_home() -> Result<PathBuf> {
     Ok(home.join(".claude"))
 }
 
-/// ~/.paper-claude-switch/
+/// ~/.paper-agy-switch/
 pub fn app_home() -> Result<PathBuf> {
     // Keep application state relocatable without changing Claude's own home.
-    if let Some(path) = std::env::var_os("PAPER_CLAUDE_SWITCH_HOME").filter(|value| !value.is_empty()) {
+    if let Some(path) = std::env::var_os("PAPER_AGY_SWITCH_HOME").filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(path));
     }
 
     let home =
         dirs::home_dir().ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
-    Ok(home.join(".paper-claude-switch"))
+    Ok(home.join(".paper-agy-switch"))
 }
 
-/// ~/.paper-claude-switch/profiles/
+/// ~/.paper-agy-switch/profiles/
 pub fn profiles_dir() -> Result<PathBuf> {
     Ok(app_home()?.join("profiles"))
 }
 
-/// ~/.paper-claude-switch/current
+/// ~/.paper-agy-switch/current
 pub fn current_file() -> Result<PathBuf> {
     Ok(app_home()?.join("current"))
 }
@@ -149,7 +149,7 @@ fn should_harden_windows_parent(
 
     // Leave Claude Code's own config directory alone only when all three
     // existing paths resolve. Canonical paths avoid treating a sibling such as
-    // `paper-claude-switch-old` as a descendant of `paper-claude-switch`;
+    // `paper-agy-switch-old` as a descendant of `paper-agy-switch`;
     // resolution errors fail closed and retain directory hardening.
     let (Some(shared), Some(owned)) = (claude_home, owned_app_home) else {
         return true;
@@ -457,7 +457,7 @@ fn create_private_windows_temp(parent: &Path) -> Result<tempfile::NamedTempFile<
     };
 
     tempfile::Builder::new()
-        .prefix(".paper-claude-switch-auth-")
+        .prefix(".paper-agy-switch-auth-")
         .make_in(parent, |candidate| {
             let security_descriptor = windows_acl_security_descriptor(candidate, false, false)
                 .map_err(|error| {
@@ -723,7 +723,7 @@ mod tests {
     #[test]
     fn user_agent_names_this_tool() {
         let ua = user_agent();
-        assert!(ua.starts_with("paper-claude-switch/"), "unexpected UA: {ua}");
+        assert!(ua.starts_with("paper-agy-switch/"), "unexpected UA: {ua}");
         assert!(ua.ends_with(')'));
     }
 
@@ -831,8 +831,8 @@ mod tests {
     fn claude_home_acl_is_left_alone_but_owned_parent_is_hardened() {
         let root = tempfile::tempdir().unwrap();
         let shared = root.path().join(".claude");
-        let owned = root.path().join("paper-claude-switch");
-        let sibling = root.path().join("paper-claude-switch-old");
+        let owned = root.path().join("paper-agy-switch");
+        let sibling = root.path().join("paper-agy-switch-old");
         std::fs::create_dir(&shared).unwrap();
         std::fs::create_dir(&sibling).unwrap();
         std::fs::create_dir_all(owned.join("profiles").join("one")).unwrap();
@@ -860,7 +860,7 @@ mod tests {
             Some(&owned),
             true
         ));
-        let sibling_alias = owned.join("..").join("paper-claude-switch-old");
+        let sibling_alias = owned.join("..").join("paper-agy-switch-old");
         assert!(!super::should_harden_windows_parent(
             &sibling_alias,
             Some(&sibling_alias),
@@ -944,7 +944,7 @@ mod tests {
             .unwrap();
         assert!(status.success(), "failed to seed an extra parent ACE");
         let parent_acl_before = acl_bytes(dir.path());
-        let owned_home = dir.path().join("paper-claude-switch");
+        let owned_home = dir.path().join("paper-agy-switch");
         std::fs::create_dir(&owned_home).unwrap();
         let temp = super::create_private_windows_temp(dir.path()).unwrap();
         assert_eq!(

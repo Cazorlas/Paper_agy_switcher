@@ -8,7 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use claude_switch::claude_api::Endpoints;
+use agy_switch::claude_api::Endpoints;
 use serde_json::Value;
 
 use super::MockResponse;

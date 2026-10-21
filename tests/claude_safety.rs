@@ -118,7 +118,7 @@ impl Env {
         // SAFETY: tests in this binary hold ENV_LOCK while the variables are in use.
         unsafe {
             std::env::set_var("CLAUDE_CONFIG_DIR", root.path().join("claude"));
-            std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", root.path().join("app"));
+            std::env::set_var("PAPER_AGY_SWITCH_HOME", root.path().join("app"));
             std::env::set_var("CS_CLAUDE_API_BASE", &mock.base);
             std::env::set_var("CS_CLAUDE_TOKEN_URL", format!("{}/v1/oauth/token", mock.base));
             for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
@@ -162,8 +162,8 @@ async fn inactive_fetch_rechecks_the_live_account_before_refreshing() {
     env.live(oauth("tokLive", "rtLive", false), "U2");
     let before = fs::read(env.path("app/profiles/work/credentials.json")).unwrap();
 
-    let profile = claude_switch::claude_usage::read_profile("work").unwrap();
-    let usage = claude_switch::claude_usage::fetch(&profile, None, true).await;
+    let profile = agy_switch::claude_usage::read_profile("work").unwrap();
+    let usage = agy_switch::claude_usage::fetch(&profile, None, true).await;
 
     let calls = mock.calls.lock().unwrap();
     assert_eq!(calls.token_calls, 0, "the live account's token must never be refreshed");
@@ -199,8 +199,8 @@ async fn rotated_token_that_cannot_be_saved_fails_the_account() {
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o500)).unwrap();
     }
 
-    let profile = claude_switch::claude_usage::read_profile("work").unwrap();
-    let result = claude_switch::claude_usage::fetch(&profile, None, true).await;
+    let profile = agy_switch::claude_usage::read_profile("work").unwrap();
+    let result = agy_switch::claude_usage::fetch(&profile, None, true).await;
 
     #[cfg(unix)]
     {
@@ -221,7 +221,7 @@ async fn rotated_token_that_cannot_be_saved_fails_the_account() {
 /// No user-facing help text still talks about Codex or OpenAI.
 #[test]
 fn help_texts_name_claude_not_codex() {
-    let bin = env!("CARGO_BIN_EXE_paper-claude-switch");
+    let bin = env!("CARGO_BIN_EXE_paper-agy-switch");
     let help = |args: &[&str]| {
         let output = Command::new(bin).args(args).env("NO_COLOR", "1").output().unwrap();
         String::from_utf8_lossy(&output.stdout).into_owned()

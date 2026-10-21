@@ -1,23 +1,24 @@
 [package]
-name = "paper-claude-switch"
-version = "0.6.3"
+name = "paper-agy-switch"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-description = "Claude Code account switcher - multi-profile manager with usage dashboard"
-license = "MIT"
-repository = "https://github.com/Cazorlas/Paper.Claude-switcher"
-keywords = ["claude", "anthropic", "account", "switcher", "cli"]
+description = "Google Antigravity (agy CLI and desktop) account switcher - multi-profile manager with quota dashboard"
+license = "Apache-2.0"
+repository = "https://github.com/Cazorlas/Paper_agy_switcher"
+keywords = ["antigravity", "agy", "gemini", "account", "switcher"]
 categories = ["command-line-utilities"]
 
 [lib]
-name = "claude_switch"
+name = "agy_switch"
 path = "src/lib.rs"
 
 [[bin]]
-name = "paper-claude-switch"
+name = "paper-agy-switch"
 test = false
 
 [dependencies]
+base64 = "0.23"
 clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 thiserror = "2"
@@ -57,6 +58,7 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",
+    "Win32_Security_Credentials",
     "Win32_System_Com",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Threading",

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -14,11 +12,11 @@ pub enum ColorMode {
 
 #[derive(Parser)]
 #[command(
-    name = "paper-claude-switch",
+    name = "paper-agy-switch",
     version = concat!(env!("CARGO_PKG_VERSION"), "\n", env!("CARGO_PKG_REPOSITORY")),
-    about = "Claude Code account switcher - multi-profile manager with usage dashboard\nhttps://github.com/Cazorlas/Paper.Claude-switcher",
+    about = "Google Antigravity (agy CLI and desktop) account switcher - multi-profile manager with quota dashboard\nhttps://github.com/Cazorlas/Paper_agy_switcher",
     long_about = None,
-    after_help = "Examples:\n  paper-claude-switch list\n  paper-claude-switch use\n  paper-claude-switch rename old-alias new-alias\n  paper-claude-switch self-update --check\n\nRun `paper-claude-switch <command> --help` for command-specific options."
+    after_help = "Examples:\n  paper-agy-switch list\n  paper-agy-switch use\n  paper-agy-switch rename old-alias new-alias\n  paper-agy-switch self-update --check\n\nRun `paper-agy-switch <command> --help` for command-specific options."
 )]
 pub struct Cli {
     /// Output as compact JSON
@@ -68,9 +66,9 @@ pub enum Commands {
 --once does a single check for cron: exit 0 switched, 1 error, 2 nothing to do, 3 blocked (no viable target).
 
 Examples:
-  paper-claude-switch auto
-  paper-claude-switch auto --threshold 80 --dry-run
-  paper-claude-switch --json auto --once"
+  paper-agy-switch auto
+  paper-agy-switch auto --threshold 80 --dry-run
+  paper-agy-switch --json auto --once"
     )]
     Auto {
         /// Switch when the 5h or 7d window reaches this used percent
@@ -126,21 +124,9 @@ Examples:
         /// Profile alias (default: derived from the account email; a saved account keeps its alias)
         alias: Option<String>,
     },
-    /// Import the Claude accounts the Orca app manages as profiles
-    #[command(
-        after_help = "Reads <orca>/<id>/auth/{.credentials.json,oauth-account.json} for each Orca account. A new account becomes a profile; a saved account is updated only when Orca holds the fresher login; anything else is kept as is. Orca's files are never changed.\n\nExamples:\n  paper-claude-switch import-orca --dry-run\n  paper-claude-switch import-orca\n  paper-claude-switch --json import-orca --from /path/to/claude-accounts"
-    )]
-    ImportOrca {
-        /// Orca accounts folder (default: <config dir>/orca/claude-accounts)
-        #[arg(long, value_name = "DIR")]
-        from: Option<PathBuf>,
-        /// Report what would be imported without writing anything
-        #[arg(long)]
-        dry_run: bool,
-    },
     /// Check for a newer version (`--check`) or update this binary
     #[command(
-        after_help = "Examples:\n  paper-claude-switch self-update --check\n  paper-claude-switch self-update\n\nOnly the TUI checks automatically at startup. Other commands never check automatically."
+        after_help = "Examples:\n  paper-agy-switch self-update --check\n  paper-agy-switch self-update\n\nOnly the TUI checks automatically at startup. Other commands never check automatically."
     )]
     SelfUpdate {
         /// Check whether a newer version is available without installing it
@@ -149,39 +135,27 @@ Examples:
     },
     /// Switch to a profile, then run Claude Code
     #[command(after_help = "Pass Claude Code arguments after --.
-Example: paper-claude-switch launch work -- --resume")]
+Example: paper-agy-switch launch work -- --resume")]
     Launch {
         /// Profile alias (omit to auto-select the best profile)
         alias: Option<String>,
         /// Always None; the `--model` flag was removed (pass it after `--`).
         #[arg(skip)]
         model: Option<String>,
-        /// Claude Code argv; prefer `--` before this so flags are not parsed by paper-claude-switch
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Feed Claude Code's status-line usage into the cache (no network); use as the status line command
-    #[command(
-        after_help = "Claude Code pipes a JSON object with `rate_limits` to the status line command. This reads it for the active account and updates the usage cache, so `list`, the TUI and `auto` need no usage request for it. Pass your existing status line command after -- and its output is printed unchanged, or use --tee to put this in front of a shell status line command.\n\nExample settings.json:\n  \"statusLine\": {\"type\": \"command\", \"command\": \"paper-claude-switch statusline -- <your existing status line command>\"}\n  \"statusLine\": {\"type\": \"command\", \"command\": \"{ paper-claude-switch statusline --tee 2>/dev/null || cat; } | { <your existing shell command>; }\"}"
-    )]
-    Statusline {
-        /// Print stdin back unchanged, to sit in front of another status line in a shell pipe
-        #[arg(long)]
-        tee: bool,
-        /// Next status line command and its arguments (after --); stdin is passed on to it
+        /// Claude Code argv; prefer `--` before this so flags are not parsed by paper-agy-switch
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     /// Launch the interactive TUI
     Tui,
-    /// Open the paper-claude-switch data directory (~/.paper-claude-switch, or $PAPER_CLAUDE_SWITCH_HOME) in the system file manager
+    /// Open the paper-agy-switch data directory (~/.paper-agy-switch, or $PAPER_AGY_SWITCH_HOME) in the system file manager
     Open,
     /// Check Claude Code, the credentials location and the current login
     Doctor,
 }
 
-/// Split `paper-claude-switch launch …` so Claude Code argv is never parsed as a
-/// paper-claude-switch alias or global flag.
+/// Split `paper-agy-switch launch …` so Claude Code argv is never parsed as a
+/// paper-agy-switch alias or global flag.
 ///
 /// Clap treats a bare `--` as "stop parsing flags" but still fills the next
 /// positional, so `launch -- work` would otherwise become alias `work`. A
@@ -330,7 +304,7 @@ mod tests {
     #[test]
     fn launch_passthrough_after_double_dash_keeps_claude_exec_json_and_color() {
         let (json, alias, model, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "--",
@@ -349,7 +323,7 @@ mod tests {
     #[test]
     fn launch_without_double_dash_must_not_steal_claude_exec_json() {
         let (json, alias, model, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "mcp",
@@ -366,9 +340,9 @@ mod tests {
     }
 
     #[test]
-    fn launch_cs_json_before_double_dash_still_applies_to_claude_switch() {
+    fn launch_cs_json_before_double_dash_still_applies_to_agy_switch() {
         let (json, alias, _, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "--json",
             "launch",
             "work",
@@ -384,7 +358,7 @@ mod tests {
     #[test]
     fn launch_model_after_double_dash_is_claude_model_not_cs_model() {
         let (_, alias, model, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "openrouter",
             "--",
@@ -398,7 +372,7 @@ mod tests {
 
     #[test]
     fn launch_double_dash_then_alias_shaped_prompt_is_passthrough_not_alias() {
-        let raw = argv(&["paper-claude-switch", "launch", "--", "work"]);
+        let raw = argv(&["paper-agy-switch", "launch", "--", "work"]);
         let (left, right) = extract_launch_passthrough(&raw);
         let cli = Cli::try_parse_from(&left).unwrap_or_else(|e| panic!("{e}"));
         match cli.command {
@@ -414,7 +388,7 @@ mod tests {
     #[test]
     fn extract_launch_passthrough_keeps_exec_json_after_separator() {
         let raw = argv(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "--json",
             "launch",
             "work",
@@ -442,7 +416,7 @@ mod tests {
     #[test]
     fn extract_launch_passthrough_preserves_claude_double_dash() {
         let raw = argv(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "--",
@@ -455,8 +429,8 @@ mod tests {
     }
 
     #[test]
-    fn launch_cs_json_flag_on_the_subcommand_is_for_claude_switch() {
-        let (json, alias, _, args) = parse_launch(&["paper-claude-switch", "launch", "work", "--json"]);
+    fn launch_cs_json_flag_on_the_subcommand_is_for_agy_switch() {
+        let (json, alias, _, args) = parse_launch(&["paper-agy-switch", "launch", "work", "--json"]);
         assert!(json);
         assert_eq!(alias.as_deref(), Some("work"));
         assert_eq!(args, [] as [&str; 0]);
@@ -465,7 +439,7 @@ mod tests {
     #[test]
     fn launch_without_double_dash_must_not_steal_claude_exec_color() {
         let cli = Cli::try_parse_from([
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "mcp",
@@ -491,7 +465,7 @@ mod tests {
     #[test]
     fn launch_passthrough_keeps_sandbox_and_cd_flags() {
         let (_, alias, _, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "--",
@@ -521,7 +495,7 @@ mod tests {
     #[test]
     fn launch_merges_args_on_both_sides_of_double_dash() {
         let (json, alias, _, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "mcp",
@@ -537,7 +511,7 @@ mod tests {
     #[test]
     fn launch_exec_without_double_dash_is_claude_not_an_alias() {
         let (json, alias, _, args) =
-            parse_launch(&["paper-claude-switch", "launch", "mcp", "--json", "do the thing"]);
+            parse_launch(&["paper-agy-switch", "launch", "mcp", "--json", "do the thing"]);
         assert!(
             !json,
             "Claude Code exec --json must not turn on cs --json when exec is the first token"
@@ -549,7 +523,7 @@ mod tests {
     #[test]
     fn launch_sandbox_flag_without_double_dash_is_claude_not_a_parse_error() {
         let (_, alias, _, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "work",
             "--",
@@ -560,7 +534,7 @@ mod tests {
         assert_eq!(args, ["-s", "workspace-write"]);
 
         let (_, alias, _, args) = parse_launch(&[
-            "paper-claude-switch",
+            "paper-agy-switch",
             "launch",
             "-s",
             "workspace-write",
@@ -574,7 +548,7 @@ mod tests {
     #[test]
     fn launch_claude_flag_without_alias_is_passthrough() {
         let (_, alias, _, args) =
-            parse_launch(&["paper-claude-switch", "launch", "--continue"]);
+            parse_launch(&["paper-agy-switch", "launch", "--continue"]);
         assert_eq!(alias, None);
         assert_eq!(args, ["--continue"]);
     }
@@ -582,7 +556,7 @@ mod tests {
     #[test]
     fn launch_claude_subcommand_without_alias_is_passthrough() {
         let (_, alias, _, args) =
-            parse_launch(&["paper-claude-switch", "launch", "mcp", "list"]);
+            parse_launch(&["paper-agy-switch", "launch", "mcp", "list"]);
         assert_eq!(alias, None);
         assert_eq!(args, ["mcp", "list"]);
     }

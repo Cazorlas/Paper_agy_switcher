@@ -12,7 +12,7 @@ use std::{
 };
 use tracing_subscriber::fmt::MakeWriter;
 
-const LOG_PREFIX: &str = "paper-claude-switch";
+const LOG_PREFIX: &str = "paper-agy-switch";
 const MAX_LOG_AGE_DAYS: u64 = 3;
 const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_TUI_LOG_LINES: usize = 1000;
@@ -468,11 +468,11 @@ mod tests {
         let tui_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_writer(tui_writer.clone())
-            .with_filter(tracing_subscriber::EnvFilter::new("claude_switch=debug"));
+            .with_filter(tracing_subscriber::EnvFilter::new("agy_switch=debug"));
         let file_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_writer(file_writer)
-            .with_filter(tracing_subscriber::EnvFilter::new("claude_switch=debug"));
+            .with_filter(tracing_subscriber::EnvFilter::new("agy_switch=debug"));
         let subscriber = tracing_subscriber::registry()
             .with(tui_layer)
             .with(file_layer);
@@ -480,20 +480,20 @@ mod tests {
 
         tracing::dispatcher::with_default(&dispatch, || {
             tracing::info!(
-                target: "claude_switch::usage::api",
+                target: "agy_switch::usage::api",
                 phase = "cache_get_initial",
                 elapsed_ms = 1,
                 outcome = "miss",
                 "usage local phase finished"
             );
             tracing::info!(
-                target: "claude_switch::usage::api",
+                target: "agy_switch::usage::api",
                 phase = "refresh_post_started",
                 outcome = "started",
                 "credential refresh HTTP phase started"
             );
             tracing::info!(
-                target: "claude_switch::usage::api",
+                target: "agy_switch::usage::api",
                 phase = "usage_total",
                 elapsed_ms = 5,
                 outcome = "success",

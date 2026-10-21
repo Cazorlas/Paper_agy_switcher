@@ -1,3 +1,5 @@
+This project began as a fork of Paper.Claude-switcher (MIT, Copyright (c) 2026 Cazorlas).
+
 # Third-party notices
 
 paper-claude-switch includes code adapted from [codex-switch](https://github.com/xjoker/codex-switch), used under the following license:

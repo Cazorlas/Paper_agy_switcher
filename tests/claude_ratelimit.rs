@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use claude_switch::usage::UsageInfo;
+use agy_switch::usage::UsageInfo;
 use serde_json::{Value, json};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -121,7 +121,7 @@ impl Env {
         // SAFETY: tests in this binary hold ENV_LOCK while the variables are in use.
         unsafe {
             std::env::set_var("CLAUDE_CONFIG_DIR", root.path().join("claude"));
-            std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", root.path().join("app"));
+            std::env::set_var("PAPER_AGY_SWITCH_HOME", root.path().join("app"));
             std::env::set_var("HOME", root.path().join("home"));
             std::env::set_var("USERPROFILE", root.path().join("home"));
             std::env::set_var("CS_CLAUDE_API_BASE", &mock.base);
@@ -150,9 +150,9 @@ impl Env {
     }
 }
 
-async fn fetch_forced() -> Result<UsageInfo, claude_switch::usage::UsageError> {
-    let profile = claude_switch::claude_usage::read_profile("work").unwrap();
-    claude_switch::claude_usage::fetch(&profile, None, true).await
+async fn fetch_forced() -> Result<UsageInfo, agy_switch::usage::UsageError> {
+    let profile = agy_switch::claude_usage::read_profile("work").unwrap();
+    agy_switch::claude_usage::fetch(&profile, None, true).await
 }
 
 fn primary(usage: &UsageInfo) -> Option<f64> {

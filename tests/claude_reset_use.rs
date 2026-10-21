@@ -15,7 +15,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
-use claude_switch::claude_api::{ClaimError, ClaimResult};
+use agy_switch::claude_api::{ClaimError, ClaimResult};
 use serde_json::{Value, json};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -130,7 +130,7 @@ impl Env {
         // SAFETY: tests in this binary hold ENV_LOCK while the variables are in use.
         unsafe {
             std::env::set_var("CLAUDE_CONFIG_DIR", root.path().join("claude"));
-            std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", root.path().join("app"));
+            std::env::set_var("PAPER_AGY_SWITCH_HOME", root.path().join("app"));
             std::env::set_var("HOME", root.path().join("home"));
             std::env::set_var("USERPROFILE", root.path().join("home"));
             std::env::set_var("CS_CLAUDE_API_BASE", &mock.base);
@@ -193,7 +193,7 @@ async fn inactive_profile_claims_the_next_grant_with_its_saved_token() {
     let mock = Mock::start(usage_with_next(json!("g2"))).await;
     let _env = Env::new(&mock, 3_600_000, Some("org-1"));
 
-    let claim = claude_switch::claude_usage::claim_reset("work", "req_7")
+    let claim = agy_switch::claude_usage::claim_reset("work", "req_7")
         .await
         .unwrap_or_else(|e| panic!("claim failed: {e:?}"));
 
@@ -217,7 +217,7 @@ async fn no_usable_grant_is_rejected_and_nothing_is_posted() {
     let mock = Mock::start(usage_with_next(Value::Null)).await;
     let _env = Env::new(&mock, 3_600_000, Some("org-1"));
 
-    let result = claude_switch::claude_usage::claim_reset("work", "req_7").await;
+    let result = agy_switch::claude_usage::claim_reset("work", "req_7").await;
 
     assert!(matches!(result, Err(ClaimError::Rejected(_))), "result: {result:?}");
     assert!(mock.claims().is_empty(), "nothing may be posted");
@@ -230,7 +230,7 @@ async fn missing_organization_is_rejected_and_nothing_is_posted() {
     let mock = Mock::start(usage_with_next(json!("g2"))).await;
     let _env = Env::new(&mock, 3_600_000, None);
 
-    let result = claude_switch::claude_usage::claim_reset("work", "req_7").await;
+    let result = agy_switch::claude_usage::claim_reset("work", "req_7").await;
 
     assert!(matches!(result, Err(ClaimError::Rejected(_))), "result: {result:?}");
     assert!(mock.claims().is_empty(), "nothing may be posted");
@@ -245,7 +245,7 @@ async fn active_profile_with_an_expired_live_token_is_not_refreshed() {
     let env = Env::new(&mock, 3_600_000, Some("org-1"));
     env.log_in_work(-3_600_000);
 
-    let result = claude_switch::claude_usage::claim_reset("work", "req_7").await;
+    let result = agy_switch::claude_usage::claim_reset("work", "req_7").await;
 
     assert!(matches!(result, Err(ClaimError::Rejected(_))), "result: {result:?}");
     assert!(mock.claims().is_empty(), "nothing may be posted");

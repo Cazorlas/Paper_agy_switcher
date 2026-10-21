@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `paper-claude-switch --version`
+      description: Output of `paper-agy-switch --version`
     validations: { required: true }
   - type: input
     id: system
@@ -22,7 +22,7 @@ body:
     id: claude
     attributes:
       label: Claude Code version
-      description: Output of `claude --version` (or `paper-claude-switch doctor`)
+      description: Output of `claude --version` (or `paper-agy-switch doctor`)
   - type: textarea
     id: what
     attributes:

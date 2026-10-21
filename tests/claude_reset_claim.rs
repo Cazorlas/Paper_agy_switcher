@@ -10,7 +10,7 @@ use axum::{
     http::{HeaderMap, Method, StatusCode, Uri},
     routing::any,
 };
-use claude_switch::claude_api::{
+use agy_switch::claude_api::{
     ClaimError, ClaimResult, Endpoints, ResetClaim, UsageError, claim_reset_grant,
 };
 

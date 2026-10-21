@@ -188,7 +188,7 @@ pub(crate) async fn auto_cmd(opts: AutoOptions) -> Result<()> {
     loop {
         let Some(current) = claude_usage::current_active() else {
             anyhow::bail!(
-                "the live Claude account is not a saved profile; run `paper-claude-switch login` first"
+                "the live Claude account is not a saved profile; run `paper-agy-switch login` first"
             );
         };
         let in_cooldown = last_switch.is_some_and(|t| t.elapsed() < opts.cooldown);

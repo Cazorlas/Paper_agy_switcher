@@ -15,7 +15,7 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 fn temp_home(name: &str) -> PathBuf {
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("claude-switch-{name}-{ts}-{id}"));
+    let path = std::env::temp_dir().join(format!("agy-switch-{name}-{ts}-{id}"));
     fs::create_dir_all(&path).unwrap();
     path
 }
@@ -45,7 +45,7 @@ fn install_fake_claude(home: &Path) -> (PathBuf, PathBuf) {
 }
 
 fn write_claude_profile(home: &Path, alias: &str, email: &str, uuid: &str) {
-    let dir = home.join(".paper-claude-switch/profiles").join(alias);
+    let dir = home.join(".paper-agy-switch/profiles").join(alias);
     fs::create_dir_all(&dir).unwrap();
     let oauth = json!({
         "accessToken": format!("tok-{alias}"),
@@ -66,13 +66,13 @@ fn write_claude_profile(home: &Path, alias: &str, email: &str, uuid: &str) {
 }
 
 fn run(home: &Path, fake: &(PathBuf, PathBuf), args: &[&str]) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-claude-switch"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-agy-switch"));
     cmd.args(args)
         .stdin(Stdio::null())
         .env("HOME", home)
         .env("USERPROFILE", home)
         .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
-        .env("PAPER_CLAUDE_SWITCH_HOME", home.join(".paper-claude-switch"))
+        .env("PAPER_AGY_SWITCH_HOME", home.join(".paper-agy-switch"))
         .env("CS_CLAUDE_BIN", &fake.0)
         .env("CS_FAKE_LOG", &fake.1)
         .env("NO_COLOR", "1")

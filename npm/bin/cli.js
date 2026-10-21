@@ -5,7 +5,7 @@ const path = require("path");
 const { spawnSync, spawn } = require("child_process");
 
 const isWin = process.platform === "win32";
-const exe = path.join(__dirname, isWin ? "paper-claude-switch.exe" : "paper-claude-switch");
+const exe = path.join(__dirname, isWin ? "paper-agy-switch.exe" : "paper-agy-switch");
 const current = require("../package.json").version;
 const args = process.argv.slice(2);
 
@@ -16,7 +16,7 @@ function newer(a, b) {
 }
 
 function latestVersion() {
-  const r = spawnSync("npm", ["view", "paper-claude-switch", "version"], { encoding: "utf8", shell: isWin });
+  const r = spawnSync("npm", ["view", "paper-agy-switch", "version"], { encoding: "utf8", shell: isWin });
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
@@ -25,39 +25,39 @@ function latestVersion() {
 if (args[0] === "self-update") {
   const latest = latestVersion();
   if (!latest) {
-    console.error("paper-claude-switch: cannot reach the npm registry (is npm on PATH?)");
+    console.error("paper-agy-switch: cannot reach the npm registry (is npm on PATH?)");
     process.exit(1);
   }
   if (!newer(latest, current)) {
-    console.log(`paper-claude-switch ${current} is up to date`);
+    console.log(`paper-agy-switch ${current} is up to date`);
     process.exit(0);
   }
-  console.log(`paper-claude-switch ${current} -> ${latest}`);
+  console.log(`paper-agy-switch ${current} -> ${latest}`);
   if (args.includes("--check")) process.exit(0);
 
   const running = isWin
-    ? spawnSync("tasklist", ["/FI", "IMAGENAME eq paper-claude-switch.exe", "/NH"], { encoding: "utf8" }).stdout.includes("paper-claude-switch.exe")
-    : spawnSync("pgrep", ["-x", "paper-claude-switch"]).status === 0;
+    ? spawnSync("tasklist", ["/FI", "IMAGENAME eq paper-agy-switch.exe", "/NH"], { encoding: "utf8" }).stdout.includes("paper-agy-switch.exe")
+    : spawnSync("pgrep", ["-x", "paper-agy-switch"]).status === 0;
   if (running) {
     console.log("stopping the background auto so the binary can be replaced...");
-    if (isWin) spawnSync("taskkill", ["/IM", "paper-claude-switch.exe", "/F"], { stdio: "ignore" });
-    else spawnSync("pkill", ["-x", "paper-claude-switch"]);
+    if (isWin) spawnSync("taskkill", ["/IM", "paper-agy-switch.exe", "/F"], { stdio: "ignore" });
+    else spawnSync("pkill", ["-x", "paper-agy-switch"]);
   }
-  const r = spawnSync("npm", ["i", "-g", "paper-claude-switch@latest"], { stdio: "inherit", shell: isWin });
+  const r = spawnSync("npm", ["i", "-g", "paper-agy-switch@latest"], { stdio: "inherit", shell: isWin });
   if (r.status !== 0) process.exit(r.status || 1);
-  if (running) console.log("start `paper-claude-switch auto` again to resume automatic switching");
+  if (running) console.log("start `paper-agy-switch auto` again to resume automatic switching");
   process.exit(0);
 }
 
 // `uninstall [--purge | --keep-data]`: handled here so it works even when the binary is
 // missing or blocked, and because a running binary cannot delete itself.
 if (args[0] === "uninstall") {
-  const dataDir = process.env.PAPER_CLAUDE_SWITCH_HOME || path.join(os.homedir(), ".paper-claude-switch");
+  const dataDir = process.env.PAPER_AGY_SWITCH_HOME || path.join(os.homedir(), ".paper-agy-switch");
   const finish = (wipe) => {
-    if (isWin) spawnSync("taskkill", ["/IM", "paper-claude-switch.exe", "/F"], { stdio: "ignore" });
-    else spawnSync("pkill", ["-x", "paper-claude-switch"]);
+    if (isWin) spawnSync("taskkill", ["/IM", "paper-agy-switch.exe", "/F"], { stdio: "ignore" });
+    else spawnSync("pkill", ["-x", "paper-agy-switch"]);
     if (isWin) {
-      const vbs = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "paper-claude-switch-auto.vbs");
+      const vbs = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "paper-agy-switch-auto.vbs");
       try { fs.rmSync(vbs, { force: true }); } catch {}
     }
     if (wipe) {
@@ -66,8 +66,8 @@ if (args[0] === "uninstall") {
     } else {
       console.log(`kept your accounts and settings in ${dataDir}`);
     }
-    const r = spawnSync("npm", ["rm", "-g", "paper-claude-switch"], { stdio: "inherit", shell: isWin });
-    console.log(r.status === 0 ? "paper-claude-switch uninstalled" : "npm could not remove the package; run: npm rm -g paper-claude-switch");
+    const r = spawnSync("npm", ["rm", "-g", "paper-agy-switch"], { stdio: "inherit", shell: isWin });
+    console.log(r.status === 0 ? "paper-agy-switch uninstalled" : "npm could not remove the package; run: npm rm -g paper-agy-switch");
     process.exit(r.status || 0);
   };
   if (args.includes("--purge")) finish(true);
@@ -84,28 +84,28 @@ if (args[0] === "uninstall") {
 if (!fs.existsSync(exe)) {
   const r = spawnSync(process.execPath, [path.join(__dirname, "..", "install.js")], { stdio: "inherit" });
   if (r.status !== 0 || !fs.existsSync(exe)) {
-    console.error("paper-claude-switch: could not download the binary; see https://github.com/Cazorlas/Paper.Claude-switcher/releases");
+    console.error("paper-agy-switch: could not download the binary; see https://github.com/Cazorlas/Paper_agy_switcher/releases");
     process.exit(1);
   }
 }
 
 // Once a day, look for a newer version in the background and print a hint; never installs by itself.
 try {
-  const cache = path.join(os.tmpdir(), "paper-claude-switch-update.json");
+  const cache = path.join(os.tmpdir(), "paper-agy-switch-update.json");
   let info = {};
   try { info = JSON.parse(fs.readFileSync(cache, "utf8")); } catch {}
   if (!info.at || Date.now() - info.at > 24 * 3600 * 1000) {
-    const code = `const {execFileSync}=require("child_process");try{const v=execFileSync("npm",["view","paper-claude-switch","version"],{encoding:"utf8",shell:process.platform==="win32"}).trim();require("fs").writeFileSync(${JSON.stringify(cache)},JSON.stringify({at:Date.now(),latest:v}))}catch{}`;
+    const code = `const {execFileSync}=require("child_process");try{const v=execFileSync("npm",["view","paper-agy-switch","version"],{encoding:"utf8",shell:process.platform==="win32"}).trim();require("fs").writeFileSync(${JSON.stringify(cache)},JSON.stringify({at:Date.now(),latest:v}))}catch{}`;
     spawn(process.execPath, ["-e", code], { detached: true, stdio: "ignore" }).unref();
   }
   if (info.latest && newer(info.latest, current) && process.stderr.isTTY && !args.includes("--json") && !args.includes("--json-pretty") && args[0] !== "auto") {
-    console.error(`paper-claude-switch ${info.latest} is available (you have ${current}); run: paper-claude-switch self-update`);
+    console.error(`paper-agy-switch ${info.latest} is available (you have ${current}); run: paper-agy-switch self-update`);
   }
 } catch {}
 
 const r = spawnSync(exe, args, { stdio: "inherit" });
 if (r.error) {
-  console.error(`paper-claude-switch: cannot run ${exe}: ${r.error.message}`);
+  console.error(`paper-agy-switch: cannot run ${exe}: ${r.error.message}`);
   process.exit(1);
 }
 process.exit(r.status ?? 1);

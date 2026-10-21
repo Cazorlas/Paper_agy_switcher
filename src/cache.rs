@@ -314,56 +314,6 @@ pub fn put(alias: &str, usage: &UsageInfo) {
 
 /// How often an alias fed by the status line still asks the usage endpoint.
 const ENDPOINT_REFRESH_SECS: u64 = 15 * 60;
-/// How long a status-line reading with the same numbers keeps the stored one.
-const LIVE_REFRESH_SECS: u64 = 60;
-/// The status line must not hang behind a busy cache.
-const LIVE_LOCK_WAIT: Duration = Duration::from_secs(2);
-
-/// Store the windows Claude Code reported for `alias` as a fresh reading,
-/// keeping the per-model limits, the session-reset offer and the rest of the
-/// stored entry. Skipped when the numbers are unchanged and the stored reading
-/// is younger than 60 s. A window that is `None` keeps the stored one.
-/// Returns whether the cache file was written.
-pub fn put_live_windows(
-    alias: &str,
-    primary: Option<crate::usage::WindowUsage>,
-    secondary: Option<crate::usage::WindowUsage>,
-) -> Result<bool> {
-    with_cache_file_lock_at(&cache_lock_path()?, LIVE_LOCK_WAIT, || {
-        let mut cache = load_cache();
-        let now = now_secs();
-        let mut usage = cache.entries.get(alias).map(from_entry).unwrap_or_default();
-        let same = |new: &Option<crate::usage::WindowUsage>, old: &Option<crate::usage::WindowUsage>| {
-            new.as_ref().is_none_or(|new| {
-                old.as_ref().is_some_and(|old| {
-                    (new.used_percent, new.resets_at, new.window_minutes)
-                        == (old.used_percent, old.resets_at, old.window_minutes)
-                })
-            })
-        };
-        let age = now.saturating_sub(
-            usage.fetched_at.and_then(|t| u64::try_from(t).ok()).unwrap_or(0),
-        );
-        if cache.entries.contains_key(alias)
-            && same(&primary, &usage.primary)
-            && same(&secondary, &usage.secondary)
-            && age < LIVE_REFRESH_SECS
-        {
-            return Ok(false);
-        }
-        // A first reading counts as fresh; afterwards keep the endpoint's time.
-        let api_ts = cache.entries.get(alias).map_or(now, |entry| entry.api_ts.unwrap_or(entry.ts));
-        usage.fetched_at = i64::try_from(now).ok();
-        usage.primary = primary.or(usage.primary);
-        usage.secondary = secondary.or(usage.secondary);
-        let mut entry = to_entry(&usage);
-        entry.api_ts = Some(api_ts);
-        cache.entries.insert(alias.to_string(), entry);
-        save_cache(&cache)?;
-        Ok(true)
-    })
-}
-
 /// Milliseconds left of the rate-limit pause of `alias`, when one is running.
 pub fn pause_left_ms(alias: &str) -> Option<i64> {
     match with_cache_lock(|| Ok(load_cache().retry_until_ms.get(alias).copied())) {

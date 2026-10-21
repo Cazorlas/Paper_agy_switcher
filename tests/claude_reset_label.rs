@@ -4,8 +4,8 @@
 use std::sync::{Arc, Mutex};
 
 use axum::{Router, extract::RawQuery, routing::get};
-use claude_switch::claude_api::{Endpoints, SessionReset, fetch_usage};
-use claude_switch::claude_usage::session_reset_label;
+use agy_switch::claude_api::{Endpoints, SessionReset, fetch_usage};
+use agy_switch::claude_usage::session_reset_label;
 use serde_json::json;
 
 fn reset(eligible: bool, reason: Option<&str>, available: bool, next: Option<&str>, per_week: u32) -> SessionReset {

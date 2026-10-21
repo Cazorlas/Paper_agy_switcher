@@ -1116,7 +1116,7 @@ impl App {
                     .build()
                     .ok()?;
                 let body: serde_json::Value = client
-                    .get("https://registry.npmjs.org/paper-claude-switch/latest")
+                    .get("https://registry.npmjs.org/paper-agy-switch/latest")
                     .send()
                     .await
                     .ok()?
@@ -3006,7 +3006,7 @@ mod tests {
         assert_eq!(app.handle_mouse(left_click(area.x, area.y)), Some(code));
     }
 
-    /// Isolate `PAPER_CLAUDE_SWITCH_HOME`/`CLAUDE_CONFIG_DIR` for tests that touch
+    /// Isolate `PAPER_AGY_SWITCH_HOME`/`CLAUDE_CONFIG_DIR` for tests that touch
     /// profiles or the live login, so they never reach the real `~/.claude`. Serialized via the shared env lock so it can't race sibling
     /// tests that also relocate these variables.
     struct EnvHome {
@@ -3022,10 +3022,10 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let dir = tempfile::tempdir().unwrap();
-            let prev_cs = std::env::var_os("PAPER_CLAUDE_SWITCH_HOME");
+            let prev_cs = std::env::var_os("PAPER_AGY_SWITCH_HOME");
             let prev_ch = std::env::var_os("CLAUDE_CONFIG_DIR");
             unsafe {
-                std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", dir.path());
+                std::env::set_var("PAPER_AGY_SWITCH_HOME", dir.path());
                 std::env::set_var("CLAUDE_CONFIG_DIR", dir.path().join("claude"));
             }
             Self {
@@ -3041,8 +3041,8 @@ mod tests {
         fn drop(&mut self) {
             unsafe {
                 match &self.prev_cs {
-                    Some(v) => std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", v),
-                    None => std::env::remove_var("PAPER_CLAUDE_SWITCH_HOME"),
+                    Some(v) => std::env::set_var("PAPER_AGY_SWITCH_HOME", v),
+                    None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
                 }
                 match &self.prev_ch {
                     Some(v) => std::env::set_var("CLAUDE_CONFIG_DIR", v),

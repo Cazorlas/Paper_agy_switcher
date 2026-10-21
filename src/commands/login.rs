@@ -10,7 +10,7 @@ pub(crate) fn login_cmd(alias: Option<&str>, json: bool) -> Result<()> {
     let paths = claude_usage::paths()?;
     if claude_store::read_live(&paths)?.is_none() {
         anyhow::bail!(
-            "no Claude Code login found; log in to Claude Code first (run `claude`, then `/login`), then run `paper-claude-switch login` again"
+            "no Claude Code login found; log in to Claude Code first (run `claude`, then `/login`), then run `paper-agy-switch login` again"
         );
     }
     let action = claude_store::save_current(&paths, &auth::app_home()?, alias, &LockOptions::default())?;

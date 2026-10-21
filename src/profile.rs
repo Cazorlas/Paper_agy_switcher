@@ -454,15 +454,15 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let home = tempfile::tempdir().unwrap();
-            let app_home = home.path().join(".paper-claude-switch");
+            let app_home = home.path().join(".paper-agy-switch");
             let old_home = std::env::var_os("HOME");
-            let old_app_home = std::env::var_os("PAPER_CLAUDE_SWITCH_HOME");
+            let old_app_home = std::env::var_os("PAPER_AGY_SWITCH_HOME");
             let old_claude_config_dir = std::env::var_os("CLAUDE_CONFIG_DIR");
 
             unsafe {
                 std::env::set_var("CLAUDE_CONFIG_DIR", home.path().join(".claude"));
                 std::env::set_var("HOME", home.path());
-                std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", &app_home);
+                std::env::set_var("PAPER_AGY_SWITCH_HOME", &app_home);
             }
 
             Self {
@@ -483,8 +483,8 @@ mod tests {
                     None => std::env::remove_var("HOME"),
                 }
                 match &self.old_app_home {
-                    Some(value) => std::env::set_var("PAPER_CLAUDE_SWITCH_HOME", value),
-                    None => std::env::remove_var("PAPER_CLAUDE_SWITCH_HOME"),
+                    Some(value) => std::env::set_var("PAPER_AGY_SWITCH_HOME", value),
+                    None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
                 }
                 match &self.old_claude_config_dir {
                     Some(value) => std::env::set_var("CLAUDE_CONFIG_DIR", value),

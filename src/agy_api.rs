@@ -79,6 +79,7 @@ pub struct QuotaBucket {
     pub group: String,
     pub window: String,
     pub remaining_percent: f64,
+    pub disabled: bool,
     pub resets_at: Option<i64>,
     pub description: Option<String>,
 }
@@ -132,6 +133,7 @@ pub fn parse_summary(v: &Value) -> Vec<QuotaBucket> {
                 group: group["displayName"].as_str()?.into(),
                 window: bucket["window"].as_str()?.into(),
                 remaining_percent: bucket["remainingFraction"].as_f64()? * 100.0,
+                disabled: bucket["disabled"].as_bool().unwrap_or(false),
                 resets_at: reset_time(&bucket["resetTime"]),
                 description: bucket["description"].as_str().map(str::to_owned),
             })
@@ -304,6 +306,7 @@ pub fn usage_info(q: &AgyQuota) -> crate::usage::UsageInfo {
     let window = |id: &str, minutes| {
         q.buckets.iter().find(|bucket| bucket.bucket_id == id).map(|bucket| WindowUsage {
             used_percent: Some(100.0 - bucket.remaining_percent),
+            disabled: bucket.disabled,
             resets_at: bucket.resets_at,
             window_minutes: Some(minutes),
         })

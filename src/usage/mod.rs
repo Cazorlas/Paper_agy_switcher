@@ -11,6 +11,8 @@ pub use scoring::score_unified;
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WindowUsage {
     pub used_percent: Option<f64>,
+    #[serde(default)]
+    pub disabled: bool,
     pub resets_at: Option<i64>,
     pub window_minutes: Option<i64>,
 }
@@ -98,7 +100,9 @@ pub fn additional_pool_rows(limits: &[AdditionalRateLimit]) -> Vec<PoolRow> {
 /// Render a compact quota window for account rows.
 pub fn window_text(window: Option<&WindowUsage>) -> String {
     window.map(|window| {
-        let used = window.used_percent.map(|used| format!("{used:.0}%")).unwrap_or_else(|| "--".into());
+        let used = if window.disabled { "off".into() } else {
+            window.used_percent.map(|used| format!("{used:.0}%")).unwrap_or_else(|| "--".into())
+        };
         let reset = window.resets_at.map(crate::output::format_reset_short).unwrap_or_else(|| "--".into());
         format!("{used} (resets {reset})")
     }).unwrap_or_else(|| "--".into())
@@ -140,18 +144,18 @@ impl Candidate {
         now: i64,
     ) -> Self {
         let force_exhausted = u.account_limited;
+        let primary = u.primary.as_ref().filter(|w| !w.disabled);
         Self {
             alias,
             used_5h: if force_exhausted {
                 100.0
             } else {
-                u.primary
-                    .as_ref()
+                primary
                     .and_then(|w| w.used_percent)
                     .unwrap_or(0.0)
             },
             resets_at_5h: (!force_exhausted)
-                .then(|| u.primary.as_ref().and_then(|w| w.resets_at))
+                .then(|| primary.and_then(|w| w.resets_at))
                 .flatten(),
             used_7d: if force_exhausted {
                 100.0
@@ -164,7 +168,7 @@ impl Candidate {
             resets_at_7d: (!force_exhausted)
                 .then(|| u.secondary.as_ref().and_then(|w| w.resets_at))
                 .flatten(),
-            has_5h_data: u.primary.is_some() || force_exhausted,
+            has_5h_data: primary.is_some() || force_exhausted,
             has_7d_data: u.secondary.is_some() || force_exhausted,
             is_team,
             is_free,
@@ -304,11 +308,13 @@ mod pool_row_tests {
                 used_percent: Some(42.0),
                 resets_at: Some(1000),
                 window_minutes: Some(300),
+                ..Default::default()
             }),
             secondary: Some(WindowUsage {
                 used_percent: Some(10.0),
                 resets_at: Some(2000),
                 window_minutes: Some(10_080),
+                ..Default::default()
             }),
         }];
 

@@ -18,10 +18,14 @@ const CACHE_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(50);
 struct CacheEntry {
     ts: u64,
     primary_used: Option<f64>,
+    #[serde(default)]
+    primary_disabled: bool,
     primary_reset: Option<i64>,
     #[serde(default)]
     primary_window_minutes: Option<i64>,
     secondary_used: Option<f64>,
+    #[serde(default)]
+    secondary_disabled: bool,
     secondary_reset: Option<i64>,
     #[serde(default)]
     secondary_window_minutes: Option<i64>,
@@ -161,9 +165,11 @@ fn to_entry(u: &UsageInfo) -> CacheEntry {
             .and_then(|value| u64::try_from(value).ok())
             .unwrap_or_else(now_secs),
         primary_used: u.primary.as_ref().and_then(|w| w.used_percent),
+        primary_disabled: u.primary.as_ref().is_some_and(|w| w.disabled),
         primary_reset: u.primary.as_ref().and_then(|w| w.resets_at),
         primary_window_minutes: u.primary.as_ref().and_then(|w| w.window_minutes),
         secondary_used: u.secondary.as_ref().and_then(|w| w.used_percent),
+        secondary_disabled: u.secondary.as_ref().is_some_and(|w| w.disabled),
         secondary_reset: u.secondary.as_ref().and_then(|w| w.resets_at),
         secondary_window_minutes: u.secondary.as_ref().and_then(|w| w.window_minutes),
         credits_balance: u.credits_balance,
@@ -185,20 +191,22 @@ fn to_entry(u: &UsageInfo) -> CacheEntry {
 
 fn from_entry(e: &CacheEntry) -> UsageInfo {
     use crate::usage::WindowUsage;
-    let primary = if e.primary_used.is_some() || e.primary_reset.is_some() {
+    let primary = if e.primary_used.is_some() || e.primary_reset.is_some() || e.primary_disabled {
         Some(WindowUsage {
             used_percent: e.primary_used,
             resets_at: e.primary_reset,
             window_minutes: e.primary_window_minutes,
+            disabled: e.primary_disabled,
         })
     } else {
         None
     };
-    let secondary = if e.secondary_used.is_some() || e.secondary_reset.is_some() {
+    let secondary = if e.secondary_used.is_some() || e.secondary_reset.is_some() || e.secondary_disabled {
         Some(WindowUsage {
             used_percent: e.secondary_used,
             resets_at: e.secondary_reset,
             window_minutes: e.secondary_window_minutes,
+            disabled: e.secondary_disabled,
         })
     } else {
         None
@@ -327,9 +335,76 @@ mod tests {
         }))
         .unwrap();
         let usage = from_entry(&entry);
+        assert!(!usage.primary.as_ref().unwrap().disabled);
+        assert!(!entry.secondary_disabled);
         assert_eq!(usage.primary.unwrap().used_percent, Some(25.0));
         assert!(usage.secondary.is_none());
         assert!(!usage.account_limited);
+    }
+
+    fn disabled_usage() -> UsageInfo {
+        let window = crate::usage::WindowUsage {
+            used_percent: Some(53.1232),
+            disabled: true,
+            resets_at: Some(crate::auth::now_unix_secs() + 3600),
+            window_minutes: Some(300),
+        };
+        UsageInfo {
+            primary: Some(window.clone()),
+            secondary: Some(window.clone()),
+            additional_limits: vec![crate::usage::AdditionalRateLimit {
+                limit_name: Some("Gemini".into()),
+                primary: Some(window.clone()),
+                secondary: Some(window),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn assert_disabled_windows(usage: &UsageInfo) {
+        let gemini = &usage.additional_limits[0];
+        for window in [&usage.primary, &usage.secondary, &gemini.primary, &gemini.secondary] {
+            let window = window.as_ref().expect("cached window");
+            assert!(window.disabled);
+            assert_eq!(window.used_percent, Some(53.1232));
+        }
+    }
+
+    #[test]
+    fn disabled_windows_survive_cache_serialization() {
+        let encoded = serde_json::to_vec(&to_entry(&disabled_usage())).unwrap();
+        let entry: CacheEntry = serde_json::from_slice(&encoded).unwrap();
+        assert_disabled_windows(&from_entry(&entry));
+        let flag_only = UsageInfo {
+            primary: Some(crate::usage::WindowUsage { disabled: true, ..Default::default() }),
+            secondary: Some(crate::usage::WindowUsage { disabled: true, ..Default::default() }),
+            ..Default::default()
+        };
+        let restored = from_entry(&to_entry(&flag_only));
+        assert!(restored.primary.unwrap().disabled);
+        assert!(restored.secondary.unwrap().disabled);
+    }
+
+    #[test]
+    fn disabled_windows_survive_cache_put_get() {
+        let _lock = crate::profile::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir_in(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target")).unwrap();
+        struct RestoreHome(Option<std::ffi::OsString>);
+        impl Drop for RestoreHome {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.0 {
+                        Some(value) => std::env::set_var("PAPER_AGY_SWITCH_HOME", value),
+                        None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
+                    }
+                }
+            }
+        }
+        let _restore = RestoreHome(std::env::var_os("PAPER_AGY_SWITCH_HOME"));
+        unsafe { std::env::set_var("PAPER_AGY_SWITCH_HOME", dir.path()); }
+        put("disabled", &disabled_usage());
+        assert_disabled_windows(&get("disabled").expect("usage persisted by put"));
     }
 
     #[test]
@@ -418,6 +493,7 @@ mod tests {
                     used_percent: Some(100.0),
                     resets_at: Some(999),
                     window_minutes: Some(10080),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],

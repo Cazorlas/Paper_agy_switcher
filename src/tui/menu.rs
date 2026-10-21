@@ -698,6 +698,7 @@ mod tests {
             used_percent: Some(80.0),
             resets_at: Some(now + 2 * 60 * 60),
             window_minutes: Some(300),
+            ..Default::default()
         };
         let usage = UsageInfo {
             primary: Some(window.clone()),
@@ -733,6 +734,7 @@ mod tests {
             used_percent: Some(50.0),
             resets_at: Some(now + 3_600),
             window_minutes: Some(300),
+            ..Default::default()
         };
         let usage = UsageInfo {
             primary: Some(window.clone()),

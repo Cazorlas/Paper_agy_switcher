@@ -12,6 +12,7 @@ fn window(json: &serde_json::Value, minutes: i64) -> Option<WindowUsage> {
         used_percent: json.get("used_percent")?.as_f64(),
         resets_at: json.get("reset_at").and_then(serde_json::Value::as_i64),
         window_minutes: Some(minutes),
+        ..Default::default()
     })
 }
 

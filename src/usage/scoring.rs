@@ -7,6 +7,7 @@ use super::{
 /// Calculate pace: the expected used_percent if consumption were even across the window.
 /// Returns None if resets_at is unavailable.
 pub fn pace_percent(w: &WindowUsage, window_secs: i64) -> Option<f64> {
+    if w.disabled { return None; }
     let resets_at = w.resets_at?;
     let now = auth::now_unix_secs();
     let remaining_secs = (resets_at - now).max(0) as f64;
@@ -38,6 +39,7 @@ pub fn is_available(u: &UsageInfo) -> bool {
         return false;
     }
     if let Some(w) = &u.primary
+        && !w.disabled
         && w.used_percent.unwrap_or(0.0) >= 100.0
     {
         return false;
@@ -350,6 +352,7 @@ mod tests {
             used_percent: Some(used_percent),
             resets_at,
             window_minutes: None,
+            ..Default::default()
         }
     }
 
@@ -402,6 +405,26 @@ mod tests {
         assert!(!is_available(&UsageInfo::default()));
     }
 
+    #[test]
+    fn disabled_five_hour_ignores_headroom_but_weekly_exhaustion_is_unavailable() {
+        let now = 1_000_000;
+        let mut primary = window(53.1232, Some(now + 1800));
+        primary.disabled = true;
+        let mut usage = usage_with(Some(primary), Some(window(100.0, Some(now + 7 * 86400))));
+        assert!(!is_available(&usage));
+        let candidate = Candidate::from_usage("disabled".into(), &usage, false, true, 0, now);
+        assert!(!candidate.has_5h_data);
+        assert!(!is_candidate_eligible(&candidate, 20.0));
+        assert!(score_unified(&candidate, 20.0) < 0.0);
+        usage.primary.as_mut().unwrap().used_percent = Some(100.0);
+        let changed = Candidate::from_usage("disabled".into(), &usage, false, true, 0, now);
+        assert_eq!(score_unified(&candidate, 20.0), score_unified(&changed, 20.0));
+        usage.secondary.as_mut().unwrap().used_percent = Some(10.0);
+        assert!(is_available(&usage));
+        let available = Candidate::from_usage("available".into(), &usage, false, true, 0, now);
+        assert!(is_candidate_eligible(&available, 20.0));
+    }
+
     // ── adaptive scoring tests ──
 
     fn make_candidate(
@@ -435,11 +458,13 @@ mod tests {
                 used_percent: Some(used_percent),
                 resets_at: Some(resets_at),
                 window_minutes: None,
+                ..Default::default()
             }),
             secondary: Some(WindowUsage {
                 used_percent: Some(10.0),
                 resets_at: Some(resets_at + 5 * 86400),
                 window_minutes: None,
+                ..Default::default()
             }),
             plan_type: plan_type.map(|p| p.to_string()),
             ..UsageInfo::default()
@@ -761,6 +786,7 @@ mod tests {
             used_percent: Some(99.6),
             resets_at: Some(auth::now_unix_secs() + 3600),
             window_minutes: None,
+            ..Default::default()
         };
         assert_eq!(visible_pace_percent(&w, WINDOW_5H_SECS), None);
     }
@@ -771,6 +797,7 @@ mod tests {
             used_percent: Some(99.4),
             resets_at: Some(auth::now_unix_secs() + 3600),
             window_minutes: None,
+            ..Default::default()
         };
         assert!(visible_pace_percent(&w, WINDOW_5H_SECS).is_some());
     }

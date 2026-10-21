@@ -422,3 +422,24 @@ async fn row20_help_contains_no_claude_wording() {
     }
     assert!(offending.is_empty(), "Claude wording in: {offending:?}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn row21_disabled_window_is_off_in_table_and_flagged_in_json() {
+    let mut f = Fixture::new().await;
+    f.mock = mock::Mock::start_with_disabled(false, true).await;
+    f.two_profiles();
+    let entries = rows(&f.run(&["list", "--json"]));
+    for alias in ["a", "b"] {
+        let r = row(&entries, alias);
+        assert_eq!(r["usage"]["primary"]["disabled"], true);
+        assert_eq!(r["usage"]["secondary"]["disabled"], false);
+        assert_eq!(r["usage"]["gemini"]["primary"]["disabled"], false);
+    }
+    let out = f.run(&["list"]);
+    success(&out);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for email in ["a@x.com", "b@x.com"] {
+        let line = stdout.lines().find(|line| line.contains(email)).unwrap();
+        assert!(line.contains("off ↻"), "{line}");
+    }
+}

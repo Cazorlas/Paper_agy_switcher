@@ -79,7 +79,9 @@ fn plan_label(tier: &str) -> &str {
 
 fn window_text(window: Option<&usage::WindowUsage>, now: i64) -> String {
     window.map(|w| {
-        let used = w.used_percent.map(|v| format!("{v:.0}%")).unwrap_or_else(|| "--".into());
+        let used = if w.disabled { "off".into() } else {
+            w.used_percent.map(|v| format!("{v:.0}%")).unwrap_or_else(|| "--".into())
+        };
         let reset = output::format_reset_relative(w.resets_at, now);
         if reset == "--" { format!("{used} --") } else { format!("{used} ↻{reset}") }
     }).unwrap_or_else(|| "--".into())
@@ -145,7 +147,7 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
                     p.email.unwrap_or_else(|| "unknown email".into()), plan_label(tier.unwrap_or("--")).into(),
                     window_text(windows[0], now), window_text(windows[1], now),
                     window_text(windows[2], now), window_text(windows[3], now), error.unwrap_or_default()],
-                percentages: windows.map(|w| w.and_then(|w| w.used_percent)),
+                percentages: windows.map(|w| w.filter(|w| !w.disabled).and_then(|w| w.used_percent)),
             });
         }
     }
@@ -157,6 +159,15 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
 #[cfg(test)]
 mod list_tests {
     use super::*;
+
+    #[test]
+    fn disabled_window_keeps_reset_without_percentage() {
+        let window = usage::WindowUsage {
+            used_percent: Some(53.1232), disabled: true, resets_at: Some(1_000_000 + 4 * 3600 + 16 * 60),
+            ..Default::default()
+        };
+        assert_eq!(window_text(Some(&window), 1_000_000), "off ↻4h16m");
+    }
 
     #[test]
     fn plan_labels_keep_unknown_ids() {

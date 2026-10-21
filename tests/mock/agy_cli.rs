@@ -21,6 +21,7 @@ pub struct Call {
 struct MockState {
     calls: Arc<Mutex<Vec<Call>>>,
     reject_b: bool,
+    disabled: bool,
 }
 
 pub struct Mock {
@@ -31,13 +32,17 @@ pub struct Mock {
 
 impl Mock {
     pub async fn start(reject_b: bool) -> Self {
+        Self::start_with_disabled(reject_b, false).await
+    }
+
+    pub async fn start_with_disabled(reject_b: bool, disabled: bool) -> Self {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new()
             .route("/token", post(handler))
             .route("/v1internal:loadCodeAssist", post(handler))
             .route("/v1internal:fetchAvailableModels", post(handler))
             .route("/v1internal:retrieveUserQuotaSummary", post(handler))
-            .with_state(MockState { calls: calls.clone(), reject_b });
+            .with_state(MockState { calls: calls.clone(), reject_b, disabled });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
@@ -99,7 +104,7 @@ async fn handler(
         }}),
         "/v1internal:retrieveUserQuotaSummary" => json!({"groups":[
             {"displayName":"Claude and GPT models", "buckets":[
-                {"bucketId":"3p-5h","window":"5h","remainingFraction":claude,"resetTime":reset(5)},
+                {"bucketId":"3p-5h","window":"5h","remainingFraction":claude,"disabled":state.disabled,"resetTime":reset(5)},
                 {"bucketId":"3p-weekly","window":"weekly","remainingFraction":weekly,"resetTime":reset(168)}]},
             {"displayName":"Gemini Models", "buckets":[
                 {"bucketId":"gemini-5h","window":"5h","remainingFraction":gemini,"resetTime":reset(5)},

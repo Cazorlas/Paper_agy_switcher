@@ -417,3 +417,28 @@ fn agy_api_22_version_detection_falls_back_when_agy_is_missing() {
     let _env = EnvGuard::set(&[("PATH", Some(empty.path().to_str().unwrap()))]);
     assert_eq!(detect_agy_version(), "1.4.4");
 }
+
+#[test]
+fn summary_disabled_is_read_and_defaults_to_false() {
+    let q = quota(include_str!("fixtures/cloudcode/retrieveUserQuotaSummary.disabled.json"));
+    assert!(q.buckets[0].disabled);
+    assert!(!q.buckets[1].disabled);
+    near(q.buckets[0].remaining_percent, 46.8768);
+    let usage = usage_info(&q);
+    assert!(usage.primary.as_ref().unwrap().disabled);
+    assert!(!usage.secondary.as_ref().unwrap().disabled);
+    near(usage.primary.as_ref().unwrap().used_percent.unwrap(), 53.1232);
+    let legacy: WindowUsage = serde_json::from_value(json!({"used_percent":53.1232})).unwrap();
+    assert!(!legacy.disabled);
+}
+
+#[test]
+fn usage_info_copies_disabled_for_every_window() {
+    let mut q = quota(SUMMARY_PROD);
+    for bucket in &mut q.buckets { bucket.disabled = true; }
+    let usage = usage_info(&q);
+    let gemini = &usage.additional_limits[0];
+    for window in [&usage.primary, &usage.secondary, &gemini.primary, &gemini.secondary] {
+        assert!(window.as_ref().unwrap().disabled);
+    }
+}

@@ -352,7 +352,8 @@ fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
             Cell::from(emails[view]), Cell::from(tiers[view]).style(plan_color(Some(tiers[view]), selected))];
         for (window, text) in windows.iter().zip(&quota) {
             let percent = window.and_then(|w| w.used_percent).map(|p| format!("{p:.0}%")).unwrap_or_default();
-            cells.push(Cell::from(text.clone()).style(usage_pct_style(&percent, selected)));
+            let quota_style = if window.is_some_and(|w| w.disabled) { base().fg(DIM) } else { usage_pct_style(&percent, selected) };
+            cells.push(Cell::from(text.clone()).style(quota_style));
         }
         cells.push(Cell::from(status.clone()).style(status_style));
         rows.push(Row::new(cells).style(style));
@@ -1098,6 +1099,11 @@ fn render_usage_gauge(
     now: i64,
     area: Rect,
 ) {
+    if w.disabled {
+        let reset = crate::output::format_reset_relative(w.resets_at, now);
+        f.render_widget(Paragraph::new(format!("{label}  off ↻{reset}")).style(base().fg(DIM)), area);
+        return;
+    }
     let used = w.used_percent.unwrap_or(0.0).min(100.0);
     let remaining_pct = (100.0 - used).max(0.0);
     let pace = crate::usage::visible_pace_percent(w, window_secs);
@@ -1528,6 +1534,7 @@ mod tests {
             used_percent: Some(25.0),
             resets_at: Some(1_000_000),
             window_minutes: Some(300),
+            ..Default::default()
         };
         let usage = UsageInfo {
             primary: Some(window.clone()),
@@ -1555,6 +1562,7 @@ mod tests {
                     used_percent: Some(8.0),
                     resets_at: Some(crate::auth::now_unix_secs() + 6 * 24 * 60 * 60),
                     window_minutes: Some(7 * 24 * 60),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }],
@@ -1654,9 +1662,23 @@ mod tests {
     }
 
     #[test]
+    fn disabled_usage_gauge_is_dim_and_off() {
+        let window = WindowUsage {
+            used_percent: Some(53.1232), disabled: true, resets_at: Some(1_000_000 + 3600),
+            ..Default::default()
+        };
+        let mut terminal = Terminal::new(TestBackend::new(80, 3)).unwrap();
+        terminal.draw(|frame| render_usage_gauge(frame, &window, "5h", 18000, 1_000_000, frame.area())).unwrap();
+        let text = row_text(terminal.backend(), 0);
+        assert!(text.contains("off ↻1h0m"), "{text}");
+        assert!(!text.contains('%'), "{text}");
+        assert_eq!(terminal.backend().buffer()[(0, 0)].fg, DIM);
+    }
+
+    #[test]
     fn accounts_show_both_quota_groups_and_row_errors() {
         let mut app = App::new();
-        let window = |used| crate::usage::WindowUsage { used_percent: Some(used), resets_at: Some(crate::auth::now_unix_secs() + 3600), window_minutes: Some(300) };
+        let window = |used| crate::usage::WindowUsage { used_percent: Some(used), resets_at: Some(crate::auth::now_unix_secs() + 3600), window_minutes: Some(300), ..Default::default() };
         app.accounts.push(AccountEntry {
             alias: "saved".into(), info: AccountInfo { email: Some("saved@example.com".into()), ..Default::default() },
             usage: UsageStatus::Loaded(Box::new(UsageInfo {

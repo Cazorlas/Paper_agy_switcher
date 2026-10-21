@@ -231,7 +231,9 @@ fn derives_alias_and_honours_timeout() {
     let out = child.finish();
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("timed out"));
-    assert!(started.elapsed() < Duration::from_secs(4));
+    // The default wait is 600 s; 15 s proves the 1 s override while leaving room for
+    // process start-up when the suite runs in parallel on a loaded machine.
+    assert!(started.elapsed() < Duration::from_secs(15));
     assert!(!f.saved("timeout").exists());
     f.assert_live_untouched();
 }

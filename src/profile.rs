@@ -260,6 +260,7 @@ pub fn switch_profile(alias: &str) -> Result<crate::claude_store::SwitchOutcome>
 /// Switch only if the live Claude account still belongs to `expected`, so a
 /// decision made on stale numbers never overrides a switch made by another
 /// process in the meantime.
+#[cfg(test)]
 pub fn switch_profile_if_current(expected: &str, alias: &str) -> Result<bool> {
     validate_alias(expected)?;
     validate_alias(alias)?;
@@ -284,7 +285,7 @@ pub fn cmd_delete(alias: &str) -> Result<()> {
     if !dir.exists() {
         return Err(CsError::NotFound(alias.to_string()).into());
     }
-    if crate::claude_usage::current_active().as_deref() == Some(alias) {
+    if crate::agy_usage::store()?.active_alias()?.as_deref() == Some(alias) {
         return Err(CsError::ActiveProfileDelete(alias.to_string()).into());
     }
     let deleted_dir = deleted_profiles_dir()?;

@@ -241,16 +241,18 @@ impl AgyStore {
         };
         let mut aliases = Vec::new();
         for entry in entries {
-            let entry = entry.context("reading profile entry")?;
-            if entry.file_type().context("reading profile type")?.is_dir() {
-                let alias = entry.file_name().into_string().map_err(|_| anyhow::anyhow!("profile alias is not UTF-8"))?;
-                crate::profile::validate_alias(&alias)?;
+            let Ok(entry) = entry else { continue };
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                let Ok(alias) = entry.file_name().into_string() else { continue };
+                if crate::profile::validate_alias(&alias).is_err() { continue; }
                 aliases.push(alias);
             }
         }
         aliases.sort();
         for alias in aliases {
-            if same_account(identity, &identity_of(&self.profile_blob(&alias)?)?) { return Ok(Some(alias)); }
+            let Ok(blob) = self.profile_blob(&alias) else { continue };
+            let Ok(saved_identity) = identity_of(&blob) else { continue };
+            if same_account(identity, &saved_identity) { return Ok(Some(alias)); }
         }
         Ok(None)
     }

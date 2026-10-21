@@ -4,7 +4,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -216,29 +215,4 @@ async fn rotated_token_that_cannot_be_saved_fails_the_account() {
     let calls = mock.calls.lock().unwrap();
     assert_eq!(calls.token_calls, 1);
     assert!(calls.usage_tokens.is_empty(), "usage must not be requested: {:?}", calls.usage_tokens);
-}
-
-/// No user-facing help text still talks about Codex or OpenAI.
-#[test]
-fn help_texts_name_claude_not_codex() {
-    let bin = env!("CARGO_BIN_EXE_paper-agy-switch");
-    let help = |args: &[&str]| {
-        let output = Command::new(bin).args(args).env("NO_COLOR", "1").output().unwrap();
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    };
-    let top = help(&["--help"]);
-    assert!(top.contains("Claude"), "{top}");
-    for sub in ["use", "auto", "list", "rename", "delete", "restore", "login", "self-update",
-        "launch", "tui", "open", "doctor"] {
-        let text = help(&[sub, "--help"]);
-        assert!(!text.is_empty(), "no help for {sub}");
-        let lower = text.to_lowercase();
-        for word in ["codex", "openai", "chatgpt", "auth.json"] {
-            assert!(!lower.contains(word), "`{sub} --help` mentions {word}:\n{text}");
-        }
-    }
-    let lower = top.to_lowercase();
-    for word in ["codex", "openai", "chatgpt", "auth.json"] {
-        assert!(!lower.contains(word), "`--help` mentions {word}:\n{top}");
-    }
 }

@@ -1,38 +1,24 @@
-use crate::claude_store::{self, LockOptions, SaveAction};
-use crate::output::{self, print_json};
-use crate::{auth, claude_usage, color};
-use anyhow::Result;
+use anyhow::{Context, Result};
+use crate::{agy_store, agy_usage, output, profile};
 
-// ── login ─────────────────────────────────────────────────
-
-/// Save the account Claude Code is logged in to as a profile.
 pub(crate) fn login_cmd(alias: Option<&str>, json: bool) -> Result<()> {
-    let paths = claude_usage::paths()?;
-    if claude_store::read_live(&paths)?.is_none() {
-        anyhow::bail!(
-            "no Claude Code login found; log in to Claude Code first (run `claude`, then `/login`), then run `paper-agy-switch login` again"
-        );
-    }
-    let action = claude_store::save_current(&paths, &auth::app_home()?, alias, &LockOptions::default())?;
-    let (alias, outcome, text) = match action {
-        SaveAction::Created(a) => {
-            let text = format!("[ok] Saved the current Claude login as new profile: {a}");
-            (a, "created", text)
-        }
-        SaveAction::Updated(a) => {
-            let text = format!("[ok] Updated existing profile for this account: {a}");
-            (a, "updated", text)
-        }
-    };
-    tracing::info!(action = "login", alias = %alias, outcome, "profile login completed");
+    let store = agy_usage::store()?;
+    let live = store.read_live()?.context(
+        "not signed in to Antigravity - sign in with `agy` first, then run `paper-agy-switch login <alias>`"
+    )?;
+    let identity = agy_store::identity_of(&live)?;
+    let derived = identity.email.as_deref().unwrap_or("account").split('@').next().unwrap_or("account")
+        .chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') { c } else { '_' })
+        .take(64).collect::<String>();
+    let derived = if derived.is_empty() || derived == "." || derived == ".." { "account" } else { &derived };
+    let alias = alias.unwrap_or(derived);
+    let _lock = profile::lock_live_auth()?;
+    let action = store.save_current(alias)?;
+    let action = match action { agy_store::SaveAction::Created => "created", agy_store::SaveAction::Updated => "updated" };
     if json {
-        print_json(&output::JsonOk {
-            ok: true,
-            alias,
-            action: outcome.into(),
-        });
+        output::print_json(&serde_json::json!({"ok":true,"alias":alias,"email":identity.email,"action":action}));
     } else {
-        println!("{}", color::success(&text));
+        println!("Saved {alias} ({}).", identity.email.as_deref().unwrap_or("unknown email"));
     }
     Ok(())
 }

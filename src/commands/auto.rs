@@ -1,8 +1,7 @@
 //! `auto`: watch the active account's quota and swap to a better one before
-//! Claude Code hits its usage limit (the claude-swap `cswap auto` model).
+//! Antigravity hits its usage limit.
 
-use super::profile::{score_profile_candidates};
-use crate::{auth, cache, claude_store, claude_usage, color, config, profile, usage};
+use crate::{auth, cache, agy_usage, color, config, profile, usage};
 use anyhow::Result;
 use std::time::{Duration, Instant};
 
@@ -101,63 +100,25 @@ fn emit(opts: &AutoOptions, event: &str, detail: serde_json::Value, text: String
 
 /// Fetch usage for every profile (forced: a switch decision must not run on a
 /// stale cache) and rank them.
-async fn rank_pool() -> Result<Vec<(usage::Candidate, usage::UsageInfo, f64)>> {
-    let live = claude_usage::paths().and_then(|paths| claude_store::read_live(&paths))?;
-    let profiles = claude_usage::profiles()?;
-    let active = claude_usage::active_alias(&profiles, live.as_ref())?;
-    let results =
-        claude_usage::fetch_all(&profiles, active.as_deref(), live.as_ref(), true).await;
-    let mut fetched = Vec::new();
-    for (p, result) in profiles.iter().zip(results) {
-        match result {
-            Ok(u) => fetched.push((p.alias.clone(), u)),
-            Err(e) => tracing::warn!("[{}] usage fetch failed during auto-swap: {e}", p.alias),
-        }
-    }
-    let cfg = config::get();
-    Ok(score_profile_candidates(
-        fetched,
-        auth::now_unix_secs(),
-        cfg.use_cfg.safety_margin_7d,
-        cfg.use_cfg.team_priority,
-    ))
-}
-
-/// One check-and-maybe-switch decision (nothing is switched here).
-/// `current` is the profile of the live Claude account.
 pub(crate) async fn tick(opts: &AutoOptions, current: &str) -> Result<Decision> {
-    let cfg = config::get();
-    let safety_7d = cfg.use_cfg.safety_margin_7d;
-    let live = usage::fetch_usage_retried_force(current)
-        .await
-        .map_err(|e| anyhow::anyhow!("usage check for '{current}' failed: {}", e.summary))?;
-    let limited_now = live.account_limited;
-
-    // Cheap pre-check on the active account alone: only fan out to the whole
-    // pool when a switch is actually on the table.
-    let single = score_profile_candidates(
-        vec![(current.to_string(), live)],
-        auth::now_unix_secs(),
-        safety_7d,
-        cfg.use_cfg.team_priority,
-    );
-    let pre: Vec<_> = single.iter().map(|(c, _, s)| (c.clone(), *s)).collect();
-    let first = decide(current, &pre, limited_now, opts, safety_7d);
-    if matches!(first, Decision::Stay { .. }) {
-        return Ok(first);
+    let pool = agy_usage::rank_pool(true).await?;
+    if !pool.iter().any(|(candidate, _, _)| candidate.alias == current) {
+        anyhow::bail!("usage check for active account failed");
     }
-
-    let pool = rank_pool().await?;
-    let ranked: Vec<_> = pool.iter().map(|(c, _, s)| (c.clone(), *s)).collect();
-    Ok(decide(current, &ranked, limited_now, opts, safety_7d))
+    let ranked: Vec<_> = pool.into_iter().map(|(c, _, s)| (c, s)).collect();
+    Ok(decide(current, &ranked, false, opts, config::get().use_cfg.safety_margin_7d))
 }
 
 fn apply(current: &str, alias: &str) -> Result<bool> {
     // Compare-and-swap: bail if another process switched the live account.
-    if !profile::switch_profile_if_current(current, alias)? {
+    let _lock = profile::lock_live_auth()?;
+    let store = agy_usage::store()?;
+    if store.active_alias()?.as_deref() != Some(current) {
         return Ok(false);
     }
-    cache::set_last_used(alias)?;
+    let result = store.switch_to(alias)?;
+    if let Err(error) = cache::set_last_used(alias) { tracing::warn!("could not record last use: {error}"); }
+    super::profile::announce_switch(alias, &result)?;
     tracing::info!(
         action = "switch",
         alias,
@@ -186,9 +147,9 @@ pub(crate) async fn auto_cmd(opts: AutoOptions) -> Result<()> {
     let mut last_blocked = false;
 
     loop {
-        let Some(current) = claude_usage::current_active() else {
+        let Some(current) = agy_usage::store()?.active_alias()? else {
             anyhow::bail!(
-                "the live Claude account is not a saved profile; run `paper-agy-switch login` first"
+                "the live Antigravity account is not a saved profile; run `paper-agy-switch login` first"
             );
         };
         let in_cooldown = last_switch.is_some_and(|t| t.elapsed() < opts.cooldown);

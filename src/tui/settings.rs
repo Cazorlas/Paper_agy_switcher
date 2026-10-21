@@ -610,6 +610,7 @@ mod tests {
             auto_refresh_interval_secs: _,
         } = tui;
         let crate::config::UseConfig {
+            pool: _,
             safety_margin_7d: _,
             team_priority: _,
         } = use_cfg;

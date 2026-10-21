@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 use owo_colors::OwoColorize;
 
 use crate::cli::ColorMode;
-use crate::claude_usage::PlanKind;
 
 static ENABLED: OnceLock<bool> = OnceLock::new();
 
@@ -101,41 +100,5 @@ pub fn usage_pct(s: &str, pct: f64) -> String {
         format!("{}", s.yellow())
     } else {
         format!("{}", s.green())
-    }
-}
-
-/// Color a plan label by type
-pub fn plan(label: &str, plan_type: Option<&str>) -> String {
-    if !enabled() {
-        return format!("[{label}]");
-    }
-    colored_plan(label, plan_type)
-}
-
-fn colored_plan(label: &str, plan_type: Option<&str>) -> String {
-    match PlanKind::from_wire(plan_type) {
-        PlanKind::Free | PlanKind::Unknown => format!("[{}]", label.bright_black()),
-        PlanKind::Go => format!("[{}]", label.bright_blue()),
-        PlanKind::Plus => format!("[{}]", label.cyan()),
-        PlanKind::ProLite => format!("[{}]", label.yellow()),
-        PlanKind::Pro => format!("[{}]", label.bright_yellow().bold()),
-        PlanKind::Team | PlanKind::Business | PlanKind::Edu => {
-            format!("[{}]", label.magenta())
-        }
-        PlanKind::Enterprise => format!("[{}]", label.bright_magenta().bold()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::colored_plan;
-
-    #[test]
-    fn plan_colors_distinguish_go_and_both_pro_tiers() {
-        assert!(colored_plan("Go", Some("go")).contains("\u{1b}[94m"));
-        assert!(colored_plan("Pro 5×", Some("prolite")).contains("\u{1b}[33m"));
-        let pro = colored_plan("Pro 20×", Some("pro"));
-        assert!(pro.contains("\u{1b}[93m"));
-        assert!(pro.contains("\u{1b}[1m"));
     }
 }

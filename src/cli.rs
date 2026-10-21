@@ -119,7 +119,7 @@ Examples:
         #[arg(long = "as", value_name = "NEW_ALIAS")]
         as_alias: Option<String>,
     },
-    /// Save the account Claude Code is logged in to (log in with `claude`, then `/login`, first)
+    /// Save the account Antigravity is logged in to (log in with `agy`, first)
     Login {
         /// Profile alias (default: derived from the account email; a saved account keeps its alias)
         alias: Option<String>,
@@ -133,8 +133,8 @@ Examples:
         #[arg(long)]
         check: bool,
     },
-    /// Switch to a profile, then run Claude Code
-    #[command(after_help = "Pass Claude Code arguments after --.
+    /// Switch to a profile, then run Antigravity
+    #[command(after_help = "Pass Antigravity arguments after --.
 Example: paper-agy-switch launch work -- --resume")]
     Launch {
         /// Profile alias (omit to auto-select the best profile)
@@ -142,7 +142,7 @@ Example: paper-agy-switch launch work -- --resume")]
         /// Always None; the `--model` flag was removed (pass it after `--`).
         #[arg(skip)]
         model: Option<String>,
-        /// Claude Code argv; prefer `--` before this so flags are not parsed by paper-agy-switch
+        /// Antigravity argv; prefer `--` before this so flags are not parsed by paper-agy-switch
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -150,16 +150,16 @@ Example: paper-agy-switch launch work -- --resume")]
     Tui,
     /// Open the paper-agy-switch data directory (~/.paper-agy-switch, or $PAPER_AGY_SWITCH_HOME) in the system file manager
     Open,
-    /// Check Claude Code, the credentials location and the current login
+    /// Check Antigravity, the credentials location and the current login
     Doctor,
 }
 
-/// Split `paper-agy-switch launch …` so Claude Code argv is never parsed as a
+/// Split `paper-agy-switch launch …` so Antigravity argv is never parsed as a
 /// paper-agy-switch alias or global flag.
 ///
 /// Clap treats a bare `--` as "stop parsing flags" but still fills the next
 /// positional, so `launch -- work` would otherwise become alias `work`. A
-/// known Claude Code subcommand (`mcp`, `config`, …) or a non-launch flag (`-p`)
+/// known Antigravity subcommand (`mcp`, `config`, …) or a non-launch flag (`-p`)
 /// in the alias slot is treated the same way, so `launch mcp --json` is not
 /// `profile 'mcp' not found`.
 pub(crate) fn extract_launch_passthrough(argv: &[String]) -> (Vec<String>, Option<Vec<String>>) {
@@ -176,7 +176,7 @@ pub(crate) fn extract_launch_passthrough(argv: &[String]) -> (Vec<String>, Optio
             i += skip;
             continue;
         }
-        if arg.starts_with('-') || is_claude_subcommand(arg) {
+        if arg.starts_with('-') || is_agy_subcommand(arg) {
             return (argv[..i].to_vec(), Some(argv[i..].to_vec()));
         }
         if let Some(rel) = argv[i + 1..].iter().position(|next| next == "--") {
@@ -189,7 +189,7 @@ pub(crate) fn extract_launch_passthrough(argv: &[String]) -> (Vec<String>, Optio
 }
 
 /// Concatenate clap's trailing launch args with argv taken from after `--`
-/// (or from a Claude Code subcommand / foreign flag). `launch work mcp -- --json`
+/// (or from a Antigravity subcommand / foreign flag). `launch work mcp -- --json`
 /// must keep `mcp`.
 pub(crate) fn merge_launch_args(
     clap_args: Vec<String>,
@@ -232,9 +232,9 @@ fn skip_launch_or_global_flag(argv: &[String], i: usize) -> Option<usize> {
     }
 }
 
-/// Claude Code's own subcommands: in the alias slot of `launch` they start
+/// Antigravity's own subcommands: in the alias slot of `launch` they start
 /// the passthrough instead of naming a profile.
-pub(crate) fn is_claude_subcommand(name: &str) -> bool {
+pub(crate) fn is_agy_subcommand(name: &str) -> bool {
     matches!(
         name,
         "mcp"
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_passthrough_after_double_dash_keeps_claude_exec_json_and_color() {
+    fn launch_passthrough_after_double_dash_keeps_agy_exec_json_and_color() {
         let (json, alias, model, args) = parse_launch(&[
             "paper-agy-switch",
             "launch",
@@ -314,14 +314,14 @@ mod tests {
             "never",
             "do the thing",
         ]);
-        assert!(!json, "Claude Code --json after -- must not turn on cs --json");
+        assert!(!json, "Antigravity --json after -- must not turn on cs --json");
         assert_eq!(alias.as_deref(), Some("work"));
         assert_eq!(model, None);
         assert_eq!(args, ["mcp", "--json", "--color", "never", "do the thing"]);
     }
 
     #[test]
-    fn launch_without_double_dash_must_not_steal_claude_exec_json() {
+    fn launch_without_double_dash_must_not_steal_agy_exec_json() {
         let (json, alias, model, args) = parse_launch(&[
             "paper-agy-switch",
             "launch",
@@ -332,7 +332,7 @@ mod tests {
         ]);
         assert!(
             !json,
-            "cs --json is global and currently steals Claude Code exec --json; this test names the contract"
+            "cs --json is global and currently steals Antigravity exec --json; this test names the contract"
         );
         assert_eq!(alias.as_deref(), Some("work"));
         assert_eq!(model, None);
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_model_after_double_dash_is_claude_model_not_cs_model() {
+    fn launch_model_after_double_dash_is_agy_model_not_cs_model() {
         let (_, alias, model, args) = parse_launch(&[
             "paper-agy-switch",
             "launch",
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_launch_passthrough_preserves_claude_double_dash() {
+    fn extract_launch_passthrough_preserves_agy_double_dash() {
         let raw = argv(&[
             "paper-agy-switch",
             "launch",
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_without_double_dash_must_not_steal_claude_exec_color() {
+    fn launch_without_double_dash_must_not_steal_agy_exec_color() {
         let cli = Cli::try_parse_from([
             "paper-agy-switch",
             "launch",
@@ -454,7 +454,7 @@ mod tests {
                 assert_eq!(
                     cli.color,
                     ColorMode::Auto,
-                    "Claude Code exec --color must not change cs --color"
+                    "Antigravity exec --color must not change cs --color"
                 );
                 assert_eq!(args, ["mcp", "--color", "never", "do"]);
             }
@@ -509,19 +509,19 @@ mod tests {
     }
 
     #[test]
-    fn launch_exec_without_double_dash_is_claude_not_an_alias() {
+    fn launch_exec_without_double_dash_is_agy_not_an_alias() {
         let (json, alias, _, args) =
             parse_launch(&["paper-agy-switch", "launch", "mcp", "--json", "do the thing"]);
         assert!(
             !json,
-            "Claude Code exec --json must not turn on cs --json when exec is the first token"
+            "Antigravity exec --json must not turn on cs --json when exec is the first token"
         );
         assert_eq!(alias, None);
         assert_eq!(args, ["mcp", "--json", "do the thing"]);
     }
 
     #[test]
-    fn launch_sandbox_flag_without_double_dash_is_claude_not_a_parse_error() {
+    fn launch_sandbox_flag_without_double_dash_is_agy_not_a_parse_error() {
         let (_, alias, _, args) = parse_launch(&[
             "paper-agy-switch",
             "launch",
@@ -546,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_claude_flag_without_alias_is_passthrough() {
+    fn launch_agy_flag_without_alias_is_passthrough() {
         let (_, alias, _, args) =
             parse_launch(&["paper-agy-switch", "launch", "--continue"]);
         assert_eq!(alias, None);
@@ -554,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_claude_subcommand_without_alias_is_passthrough() {
+    fn launch_agy_subcommand_without_alias_is_passthrough() {
         let (_, alias, _, args) =
             parse_launch(&["paper-agy-switch", "launch", "mcp", "list"]);
         assert_eq!(alias, None);

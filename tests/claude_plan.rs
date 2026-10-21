@@ -1,13 +1,7 @@
 // The plan name and the exact "Plan until" date come from what Claude keeps
 // locally (account.json) plus the profile endpoint's subscription status.
 
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use axum::{
     Router,
@@ -16,10 +10,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use agy_switch::claude_api::{Endpoints, ProfileStatus, fetch_profile};
 use agy_switch::claude_usage::{next_renewal, plan_label};
-use serde_json::{Value, json};
+use serde_json::json;
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
     Utc.with_ymd_and_hms(year, month, day, hour, minute, 0).unwrap().timestamp()
@@ -206,201 +200,4 @@ async fn fetch_profile_reads_the_organization_status() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].0, "tokB", "Bearer token");
     assert!(!requests[0].1.is_empty(), "anthropic-beta header");
-}
-
-// ── P7-P9: the CLI ───────────────────────────────────────
-
-fn write_json(path: impl AsRef<Path>, value: &Value) {
-    let path = path.as_ref();
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, serde_json::to_vec_pretty(value).unwrap()).unwrap();
-}
-
-fn oauth(token: &str, refresh: &str) -> Value {
-    json!({
-        "accessToken": token, "refreshToken": refresh,
-        "expiresAt": chrono::Utc::now().timestamp_millis() + 3_600_000,
-        "subscriptionType": "max"
-    })
-}
-
-fn account(uuid: &str, email: &str, tier: &str, created: &str) -> Value {
-    json!({
-        "accountUuid": uuid, "emailAddress": email,
-        "billingType": "stripe_subscription",
-        "subscriptionCreatedAt": created,
-        "organizationRateLimitTier": tier,
-        "organizationType": "claude_max"
-    })
-}
-
-const PERSONAL_CREATED: &str = "2025-07-20T06:35:00Z";
-const WORK_CREATED: &str = "2025-01-31T10:00:00Z";
-
-/// Independent calendar arithmetic for the expected renewal: the creation day
-/// and time of day, clamped to the length of the month, first one after now.
-fn expected_renewal(created: &str, now: i64) -> i64 {
-    let created = DateTime::parse_from_rfc3339(created).unwrap().with_timezone(&Utc);
-    for months in 1..=1200_u32 {
-        let index = created.year() * 12 + created.month0() as i32 + months as i32;
-        let (year, month) = (index.div_euclid(12), index.rem_euclid(12) as u32 + 1);
-        let first_of_next = if month == 12 {
-            NaiveDate::from_ymd_opt(year + 1, 1, 1)
-        } else {
-            NaiveDate::from_ymd_opt(year, month + 1, 1)
-        }
-        .unwrap();
-        let days_in_month = first_of_next.pred_opt().unwrap().day();
-        let date = NaiveDate::from_ymd_opt(year, month, created.day().min(days_in_month)).unwrap();
-        let instant = date.and_time(created.time()).and_utc().timestamp();
-        if instant > now {
-            return instant;
-        }
-    }
-    panic!("no renewal found");
-}
-
-struct Fixture {
-    root: tempfile::TempDir,
-    mock: Mock,
-}
-
-impl Fixture {
-    async fn new(profile_fails: bool) -> Self {
-        let root = tempfile::Builder::new()
-            .prefix("claude-plan-")
-            .tempdir_in(Path::new(env!("CARGO_MANIFEST_DIR")).join("target"))
-            .unwrap();
-        for dir in ["claude", "app", "home", "codex"] {
-            fs::create_dir_all(root.path().join(dir)).unwrap();
-        }
-        let f = Self { root, mock: Mock::start(profile_fails).await };
-        let personal = account("U1", "a@x.com", "default_claude_max_5x", PERSONAL_CREATED);
-        let work = account("U2", "b@x.com", "default_claude_max_20x", WORK_CREATED);
-        write_json(f.path("claude/.credentials.json"), &json!({"claudeAiOauth": oauth("tokA", "rtA")}));
-        write_json(f.path("claude/.claude.json"), &json!({"oauthAccount": personal}));
-        for (alias, token, refresh, account) in
-            [("personal", "tokA", "rtA", &personal), ("work", "tokB", "rtB", &work)]
-        {
-            let dir = f.path("app/profiles").join(alias);
-            write_json(dir.join("credentials.json"), &json!({"claudeAiOauth": oauth(token, refresh)}));
-            write_json(dir.join("account.json"), account);
-        }
-        fs::write(f.path("app/current"), "personal").unwrap();
-        f
-    }
-
-    fn path(&self, relative: &str) -> PathBuf {
-        self.root.path().join(relative)
-    }
-
-    fn run(&self, args: &[&str]) -> Output {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_paper-agy-switch"));
-        cmd.args(args).current_dir(self.root.path())
-            .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
-            .env("CLAUDE_CONFIG_DIR", self.path("claude"))
-            .env("PAPER_AGY_SWITCH_HOME", self.path("app"))
-            .env("HOME", self.path("home"))
-            .env("USERPROFILE", self.path("home"))
-            .env("CODEX_HOME", self.path("codex"))
-            .env("CS_CLAUDE_API_BASE", &self.mock.base)
-            .env("CS_CLAUDE_TOKEN_URL", format!("{}/v1/oauth/token", self.mock.base))
-            .env("CS_GITHUB_API_URL", &self.mock.base)
-            .env("CS_UPDATE_TTL_SECS", "999999999")
-            .env("NO_COLOR", "1");
-        for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
-            "all_proxy", "CS_PROXY", "RUST_LOG"] {
-            cmd.env_remove(key);
-        }
-        output_with_timeout(&mut cmd)
-    }
-
-    /// The rows of a successful `--json list`.
-    fn rows(&self, args: &[&str]) -> Vec<Value> {
-        let output = self.run(args);
-        assert!(output.status.success(), "status: {}; stdout: {}; stderr: {}",
-            output.status, String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr));
-        let value: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!(
-            "invalid JSON: {error}; stdout: {}", String::from_utf8_lossy(&output.stdout)));
-        value["profiles"].as_array().unwrap().clone()
-    }
-}
-
-fn output_with_timeout(cmd: &mut Command) -> Output {
-    let mut child = cmd.spawn().unwrap();
-    let read_pipe = |mut pipe: Box<dyn Read + Send>| thread::spawn(move || {
-        let mut bytes = Vec::new();
-        pipe.read_to_end(&mut bytes).unwrap();
-        bytes
-    });
-    let stdout = read_pipe(Box::new(child.stdout.take().unwrap()));
-    let stderr = read_pipe(Box::new(child.stderr.take().unwrap()));
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            return Output { status, stdout: stdout.join().unwrap(), stderr: stderr.join().unwrap() };
-        }
-        if started.elapsed() >= Duration::from_secs(30) {
-            // This is exclusively the command spawned by this test.
-            child.kill().unwrap();
-            child.wait().unwrap();
-            let stdout = stdout.join().unwrap();
-            let stderr = stderr.join().unwrap();
-            panic!("command timed out: {cmd:?}\nstdout: {}\nstderr: {}",
-                String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr));
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-}
-
-/// P7: plan name and renewal come from account.json, the status from the
-/// profile endpoint, each with the token of its own account.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn list_shows_plan_renewal_and_subscription_status() {
-    let f = Fixture::new(false).await;
-    let rows = f.rows(&["--json", "list"]);
-    let now = chrono::Utc::now().timestamp();
-
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0]["alias"], "personal");
-    assert_eq!(rows[0]["account"]["plan"], "max5x");
-    assert_eq!(rows[0]["account"]["subscription_until"], expected_renewal(PERSONAL_CREATED, now));
-    assert_eq!(rows[0]["account"]["subscription_status"], "active");
-    assert_eq!(rows[1]["alias"], "work");
-    assert_eq!(rows[1]["account"]["plan"], "max20x");
-    assert_eq!(rows[1]["account"]["subscription_until"], expected_renewal(WORK_CREATED, now));
-    assert_eq!(rows[1]["account"]["subscription_status"], "canceled");
-    assert_eq!(rows[0]["usage"]["primary"]["used_percent"], 30.0);
-    assert_eq!(rows[1]["usage"]["primary"]["used_percent"], 30.0);
-
-    let mut tokens: Vec<String> = f.mock.profile_requests().into_iter().map(|r| r.0).collect();
-    tokens.sort();
-    assert_eq!(tokens, ["tokA", "tokB"], "each account's profile is read with its own token");
-}
-
-/// P8: the status is cached for hours, so a second forced list does not ask again.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn profile_status_is_fetched_once_per_account_in_six_hours() {
-    let f = Fixture::new(false).await;
-    f.rows(&["--json", "list", "--force"]);
-    let rows = f.rows(&["--json", "list", "--force"]);
-
-    assert_eq!(f.mock.profile_requests().len(), 2, "one profile request per account in total");
-    assert_eq!(rows[0]["account"]["subscription_status"], "active");
-    assert_eq!(rows[1]["account"]["subscription_status"], "canceled");
-}
-
-/// P9: a failing profile endpoint never fails the row.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn profile_endpoint_failure_does_not_fail_the_rows() {
-    let f = Fixture::new(true).await;
-    let rows = f.rows(&["--json", "list"]);
-
-    assert_eq!(rows.len(), 2);
-    for row in &rows {
-        assert_eq!(row["usage"]["primary"]["used_percent"], 30.0, "{row}");
-        let account = row["account"].as_object().unwrap();
-        assert_eq!(account.get("subscription_status"), Some(&Value::Null), "{row}");
-    }
 }

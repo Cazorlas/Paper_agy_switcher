@@ -1,6 +1,6 @@
 use crate::cli::{Cli, Commands, extract_launch_passthrough, merge_launch_args};
-use crate::output::{MessageMode, print_error, should_report_error, user_println};
-use crate::{auth, claude_store, claude_usage, color, commands, config, logging, output, tui};
+use crate::output::{MessageMode, print_error, should_report_error};
+use crate::{color, commands, config, logging, output, tui};
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
@@ -168,29 +168,6 @@ async fn dispatch(
     let command = command_name(&cmd);
     let started = std::time::Instant::now();
     tracing::debug!(command, "command started");
-    // First run in JSON mode (nobody to prompt): the live Claude login becomes
-    // the first profile. Without --json it is offered or announced below.
-    if json
-        && matches!(
-            &cmd,
-            Commands::List { .. } | Commands::Use { .. } | Commands::Auto { .. } | Commands::Tui
-        )
-    {
-        save_first_live_account();
-    }
-    if !json
-        && !matches!(
-            &cmd,
-            Commands::Login { .. }
-                | Commands::SelfUpdate { .. }
-                | Commands::Open
-                | Commands::Launch { .. }
-                | Commands::Doctor
-        )
-    {
-        offer_to_save_live_account();
-    }
-
     match cmd {
         Commands::Use {
             alias,
@@ -238,77 +215,6 @@ async fn dispatch(
     );
 
     Ok(())
-}
-
-// ── startup auth change detection ────────────────────────
-
-/// No profile exists yet and Claude Code has a live login: save it without
-/// asking. The notice goes to stderr so `--json` stdout stays pure JSON.
-fn save_first_live_account() {
-    let Ok(paths) = claude_usage::paths() else { return };
-    if !matches!(claude_store::read_live(&paths), Ok(Some(_))) {
-        return;
-    }
-    if !matches!(crate::profile::list_profiles(), Ok(profiles) if profiles.is_empty()) {
-        return;
-    }
-    let saved = auth::app_home().and_then(|home| {
-        claude_store::save_current(&paths, &home, None, &claude_store::LockOptions::default())
-    });
-    match saved {
-        Ok(claude_store::SaveAction::Created(alias) | claude_store::SaveAction::Updated(alias)) => {
-            eprintln!("{}", color::success(&format!("Saved profile: {alias}")));
-        }
-        Err(e) => eprintln!("{}", color::error(&format!("Failed to save: {e:#}"))),
-    }
-}
-
-/// Claude Code is logged in to an account that has no saved profile: say so,
-/// and offer to save it when a person is at the keyboard.
-fn offer_to_save_live_account() {
-    use std::io::{self, IsTerminal};
-
-    let Some(live) = claude_usage::paths()
-        .ok()
-        .and_then(|paths| claude_store::read_live(&paths).ok().flatten())
-    else {
-        return;
-    };
-    let saved = claude_usage::profiles().is_ok_and(|profiles| {
-        profiles
-            .iter()
-            .any(|p| p.info.account_id.as_deref() == Some(live.account_uuid.as_str()))
-    });
-    if saved {
-        return;
-    }
-    let label = live.email.as_deref().unwrap_or("unknown");
-    // Non-interactive stdin — don't prompt, don't silently mutate state
-    if !io::stdin().is_terminal() {
-        user_println(&format!(
-            "Detected an unsaved Claude account ({label}) (run `paper-agy-switch login` to save it)."
-        ));
-        return;
-    }
-    user_println(&format!(
-        "Detected an unsaved Claude account ({label}) — not in any saved profile."
-    ));
-    if commands::confirm("Save as a new profile? [Y/n] ") {
-        let saved = claude_usage::paths().and_then(|paths| {
-            claude_store::save_current(
-                &paths,
-                &auth::app_home()?,
-                None,
-                &claude_store::LockOptions::default(),
-            )
-        });
-        match saved {
-            Ok(claude_store::SaveAction::Created(alias) | claude_store::SaveAction::Updated(alias)) => {
-                user_println(&format!("Profile saved: {alias}"));
-            }
-            Err(e) => eprintln!("{}", color::error(&format!("Failed to save: {e:#}"))),
-        }
-    }
 }
 
 #[cfg(test)]

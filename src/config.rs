@@ -92,6 +92,7 @@ impl Default for TuiConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UseConfig {
+    pub pool: ScoringPool,
     /// 7d safety margin: when 7d remaining% falls below this, a scoring penalty kicks in (default: 20)
     pub safety_margin_7d: f64,
     /// Prioritize Team plan accounts (default: true)
@@ -101,10 +102,19 @@ pub struct UseConfig {
 impl Default for UseConfig {
     fn default() -> Self {
         Self {
+            pool: ScoringPool::Claude,
             safety_margin_7d: 20.0,
             team_priority: true,
         }
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScoringPool {
+    #[default]
+    Claude,
+    Gemini,
 }
 
 pub fn config_path() -> anyhow::Result<PathBuf> {
@@ -278,6 +288,13 @@ mod tests {
         let config = load_from_str("").unwrap();
 
         assert_eq!(config.tui.auto_refresh_interval_secs, 300);
+    }
+
+    #[test]
+    fn scoring_pool_defaults_to_claude_and_accepts_gemini() {
+        assert_eq!(load_from_str("").unwrap().use_cfg.pool, super::ScoringPool::Claude);
+        assert_eq!(load_from_str("[use]\npool = \"gemini\"\n").unwrap().use_cfg.pool, super::ScoringPool::Gemini);
+        assert!(load_from_str("[use]\npool = \"unknown\"\n").is_err());
     }
 
 }

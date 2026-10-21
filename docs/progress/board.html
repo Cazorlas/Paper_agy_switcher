@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paper-agy-switch progress</title>
+<style>
+  :root { --bg:#fbfaf7; --fg:#1d1d1b; --muted:#6b6a65; --line:#e3e1da; --ok:#2f7d4f; --run:#a26a00; --todo:#8a8a85; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ecebe6; --muted:#a19f97; --line:#2c2b28; --ok:#6cc391; --run:#e0b04a; --todo:#77766f; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  article { border-top:1px solid var(--line); padding:16px 0; }
+  h2 { font-size:17px; margin:0 0 8px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:4px 8px 4px 0; vertical-align:top; border-bottom:1px solid var(--line); }
+  td:first-child { white-space:nowrap; font-weight:600; width:3.5em; }
+  .s { white-space:nowrap; width:7em; }
+  .ok { color:var(--ok); } .run { color:var(--run); } .todo { color:var(--todo); }
+</style>
+</head>
+<body>
+<main>
+<h1>paper-agy-switch</h1>
+<p class="sub">Multi-account switcher for Google Antigravity (agy CLI and desktop 2.x). Newest entry first.</p>
+
+<article>
+<h2>2026-10-21 - Build v0.1.0 from the Claude-switcher skeleton (collab session 20261021-112844-agy-switch)</h2>
+<p>Plan: study Cockpit Tools (behaviour spec only; it ships no license) and fork Paper.Claude-switcher. The live login is the
+Windows Credential Manager entry <code>gemini:antigravity</code>; quota comes from Cloud Code
+<code>loadCodeAssist</code> / <code>fetchAvailableModels</code> / <code>retrieveUserQuotaSummary</code> (verified live, prod host).</p>
+<table>
+<tr><td>T0</td><td class="s ok">done</td><td>Imported Claude-switcher v0.6.3 tree and redacted live Cloud Code fixtures.</td></tr>
+<tr><td>T1</td><td class="s ok">done</td><td>Renamed to paper-agy-switch (Apache-2.0), removed import-orca and statusline. All tests green (run by A).</td></tr>
+<tr><td>T2</td><td class="s ok">done</td><td>Credential store: Credential Manager / file backends, identity from id_token, save and switch with capture. 28 locked tests green, incl. a real Credential Manager round trip on a throwaway target.</td></tr>
+<tr><td>T3</td><td class="s ok">done</td><td>OAuth refresh and Cloud Code quota client, mapped to the usage model. 18 locked tests green (A fixed one test bug the worker found).</td></tr>
+<tr><td>T4</td><td class="s ok">done</td><td>Commands (login, list, use, auto, launch agy, doctor, rename/delete/restore) on the new store and API; scoring pool setting (Claude/GPT or Gemini). 20 locked CLI tests green; full suite 330 passed (run by A).</td></tr>
+<tr><td>T5</td><td class="s todo">todo</td><td>TUI wiring, README, notices.</td></tr>
+<tr><td>Live</td><td class="s todo">todo</td><td>Switch and run <code>agy -p</code>; restore the original login.</td></tr>
+</table>
+</article>
+</main>
+</body>
+</html>

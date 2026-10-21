@@ -3,11 +3,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use anyhow::Error;
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeZone};
 use serde::Serialize;
 
-use crate::claude_usage::AccountInfo;
-use crate::usage::{AdditionalRateLimit, UsageInfo, WindowUsage};
 
 /// Marker error: the command already printed a user-facing failure message.
 #[derive(Debug)]
@@ -28,200 +26,12 @@ pub(crate) fn should_report_error(error: &Error) -> bool {
 // ── JSON types ───────────────────────────────────────────
 
 #[derive(Serialize)]
-pub struct JsonAccount {
-    pub email: Option<String>,
-    pub plan: Option<String>,
-    pub account_id: Option<String>,
-    pub workspace_name: Option<String>,
-    /// End of the current paid period, unix seconds (as of the last token refresh)
-    pub subscription_until: Option<i64>,
-    /// "active", "canceled", "past_due", ... from the profile endpoint
-    pub subscription_status: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct JsonWindow {
-    pub label: String,
-    pub used_percent: f64,
-    pub resets_at: Option<i64>,
-    pub resets_in_seconds: Option<i64>,
-    pub remaining_percent: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pace_percent: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub over_pace: Option<bool>,
-}
-
-#[derive(Serialize)]
-pub struct JsonAdditionalLimit {
-    pub limit_name: Option<String>,
-    pub metered_feature: Option<String>,
-    pub allowed: Option<bool>,
-    pub limit_reached: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub primary: Option<Box<JsonWindow>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub secondary: Option<Box<JsonWindow>>,
-}
-
-/// Claude's "reset your session limit" offer.
-#[derive(Serialize)]
-pub struct JsonSessionReset {
-    pub eligible: bool,
-    pub available: bool,
-    pub next_available_at: Option<String>,
-    pub resets_per_week: u32,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-pub enum JsonUsage {
-    Ok {
-        fetched_at: String,
-        primary: Option<Box<JsonWindow>>,
-        secondary: Option<Box<JsonWindow>>,
-        session_reset: Option<JsonSessionReset>,
-        /// Usage-limit reset grants; absent when the reply had none.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reset_grants: Option<Vec<crate::claude_api::ResetGrant>>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        additional_limits: Vec<JsonAdditionalLimit>,
-    },
-    Err {
-        error: String,
-    },
-}
-
-#[derive(Serialize)]
-pub struct JsonProfileWithUsage {
-    pub alias: String,
-    pub is_current: bool,
-    pub account: JsonAccount,
-    pub usage: JsonUsage,
-}
-
-#[derive(Serialize)]
-pub struct JsonUsageResult {
-    pub profiles: Vec<JsonProfileWithUsage>,
-}
-
-#[derive(Serialize)]
-pub struct JsonBest {
-    pub switched_to: String,
-    pub account: JsonAccount,
-    pub usage: JsonUsage,
-    pub score: f64,
-    pub mode: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hint: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct JsonOk {
-    pub ok: bool,
-    pub alias: String,
-    pub action: String,
-}
-
-#[derive(Serialize)]
 pub struct JsonError {
     pub ok: bool,
     pub error: String,
 }
 
 // ── Conversion helpers ───────────────────────────────────
-
-pub fn account_to_json(
-    info: &AccountInfo,
-    api_plan: Option<&str>,
-    subscription_status: Option<&str>,
-) -> JsonAccount {
-    JsonAccount {
-        subscription_status: subscription_status.map(str::to_owned),
-        email: info.email.clone(),
-        plan: api_plan
-            .map(|s| s.to_string())
-            .or_else(|| info.plan_type.clone()),
-        account_id: info.account_id.clone(),
-        workspace_name: info.workspace_name.clone(),
-        subscription_until: info.subscription_until,
-    }
-}
-
-fn window_to_json(w: &WindowUsage, label: &str, window_secs: i64) -> JsonWindow {
-    let resets_in_seconds = w.resets_at.map(|ts| ts - crate::auth::now_unix_secs());
-    let used = w.used_percent.unwrap_or(0.0);
-    let pace = crate::usage::pace_percent(w, window_secs);
-    JsonWindow {
-        label: label.to_string(),
-        used_percent: used,
-        resets_at: w.resets_at,
-        resets_in_seconds,
-        remaining_percent: (100.0 - used).max(0.0),
-        pace_percent: pace,
-        over_pace: pace.map(|p| used > p),
-    }
-}
-
-fn additional_limit_to_json(l: &AdditionalRateLimit) -> JsonAdditionalLimit {
-    JsonAdditionalLimit {
-        limit_name: l.limit_name.clone(),
-        metered_feature: l.metered_feature.clone(),
-        allowed: l.allowed,
-        limit_reached: l.limit_reached,
-        primary: l
-            .primary
-            .as_ref()
-            .map(|w| Box::new(window_to_json(w, "5h", crate::usage::WINDOW_5H_SECS))),
-        secondary: l
-            .secondary
-            .as_ref()
-            .map(|w| Box::new(window_to_json(w, "7d", crate::usage::WINDOW_7D_SECS))),
-    }
-}
-
-pub fn usage_to_json(result: Result<&UsageInfo, &str>) -> JsonUsage {
-    match result {
-        Err(e) => JsonUsage::Err {
-            error: e.to_string(),
-        },
-        Ok(u) => {
-            let fetched_at = u
-                .fetched_at
-                .map(format_iso8601)
-                .unwrap_or_else(|| Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
-            JsonUsage::Ok {
-                fetched_at,
-                primary: u
-                    .primary
-                    .as_ref()
-                    .map(|w| Box::new(window_to_json(w, "5h", crate::usage::WINDOW_5H_SECS))),
-                secondary: u
-                    .secondary
-                    .as_ref()
-                    .map(|w| Box::new(window_to_json(w, "7d", crate::usage::WINDOW_7D_SECS))),
-                session_reset: u.session_reset.as_ref().map(|reset| JsonSessionReset {
-                    eligible: reset.eligible,
-                    available: reset.available,
-                    next_available_at: reset.next_available_at.clone(),
-                    resets_per_week: reset.resets_per_week,
-                }),
-                reset_grants: u.reset_grants.clone(),
-                additional_limits: u
-                    .additional_limits
-                    .iter()
-                    .map(additional_limit_to_json)
-                    .collect(),
-            }
-        }
-    }
-}
-
-pub fn format_iso8601(ts: i64) -> String {
-    DateTime::from_timestamp(ts, 0)
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-}
 
 /// Shared timestamp formatter: "2h30m (14:30)" or "1d12h (03-27 14:30)"
 pub fn format_reset_time(ts: i64) -> String {

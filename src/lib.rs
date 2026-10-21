@@ -5,6 +5,7 @@ mod entry;
 pub use entry::run_cli;
 
 pub mod agy_store;
+pub mod agy_usage;
 pub mod auth;
 pub mod claude_api;
 pub mod claude_store;

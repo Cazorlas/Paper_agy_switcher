@@ -44,6 +44,8 @@ impl Fixture {
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => { thread::sleep(Duration::from_millis(10)); continue; }
                     Err(e) => panic!("{e}"),
                 };
+                // Windows hands out accepted sockets with the listener's non-blocking mode.
+                stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();

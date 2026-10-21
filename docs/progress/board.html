@@ -40,6 +40,8 @@ Windows Credential Manager entry <code>gemini:antigravity</code>; quota comes fr
 <tr><td>T6</td><td class="s ok">done</td><td><code>add</code>: own Google sign-in (loopback, state, PKCE) like Cockpit, saves to a profile without touching the live login; running-agy detection, <code>use --restart-agy</code>, <code>auto</code> reports overwrites. 250 tests green.</td></tr>
 <tr><td>Live</td><td class="s ok">done</td><td>Two real accounts: <code>add acc2</code> via browser, <code>use acc2</code> then a new <code>agy -p</code> logged in as acc2, <code>use main</code> restored account 1 (agy answered OK). Found: running agy processes write their account back on token refresh (20:26 rewrite observed).</td></tr>
 <tr><td>T7</td><td class="s ok">done</td><td>Aligned numbered <code>list</code> table with plan labels and relative resets (checked live); README in English and Vietnamese. 253 tests green.</td></tr>
+<tr><td>T8</td><td class="s ok">done</td><td><code>add</code> now requests the <code>aicode</code> scope agy's own /login gets (tokeninfo showed it missing). Live: acc2 works with Claude Sonnet; Gemini 3.8 Flash refused with "Individual quota reached, 61h" while both quota APIs reported 100% - README documents it.</td></tr>
+<tr><td>T9</td><td class="s ok">done</td><td>Flaky <code>agy_add</code> mock (Windows non-blocking accepted sockets) fixed: 6/6 full runs clean.</td></tr>
 <tr><td>Next</td><td class="s todo">owner</td><td>Merge to main, push, first release (tag + npm publish) - waits for the owner. Check GitHub push protection on the public OAuth client secret constant.</td></tr>
 </table>
 </article>

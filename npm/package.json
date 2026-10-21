@@ -1,6 +1,6 @@
 {
   "name": "paper-agy-switch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-account switcher for Google Antigravity, with a quota dashboard for the agy CLI and Antigravity desktop app.",
   "license": "Apache-2.0",
   "repository": { "type": "git", "url": "git+https://github.com/Cazorlas/Paper_agy_switcher.git" },

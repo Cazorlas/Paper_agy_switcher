@@ -308,7 +308,7 @@ fn table_text_widths(
 }
 
 fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let mut title = format!(" Accounts ({}) sort:{} ", app.accounts.len(), app.sort_mode.as_str());
+    let mut title = format!(" Accounts ({}) sort:{} quota: {} ", app.accounts.len(), app.sort_mode.as_str(), crate::config::get().quota.source.label());
     if let Some(search) = &app.search { title.push_str(&format!(" /{} ", search.query)); }
     if app.loading_count() > 0 { title.push_str(&format!("fetching {}... ", app.loading_count())); }
     if let Some(seconds) = app.auto_refresh_remaining_secs() {

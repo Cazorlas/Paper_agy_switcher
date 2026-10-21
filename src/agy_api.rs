@@ -1,6 +1,8 @@
 //! Google Antigravity OAuth and Cloud Code quota client.
 
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
+
+pub use crate::config::QuotaSource;
 
 use serde_json::{Value, json};
 
@@ -16,15 +18,24 @@ pub const CLOUDCODE_URL_ENV: &str = "PAPER_AGY_SWITCH_CLOUDCODE_URL";
 pub struct Endpoints {
     pub token_url: String,
     pub bases: Vec<String>,
+    pub source: QuotaSource,
 }
 
 impl Endpoints {
     pub fn from_env() -> Self {
+        Self::for_source(crate::config::get().quota.source)
+    }
+
+    pub fn for_source(source: QuotaSource) -> Self {
         Self {
+            source,
             token_url: std::env::var(TOKEN_URL_ENV).unwrap_or_else(|_| TOKEN_URL.into()),
             bases: std::env::var(CLOUDCODE_URL_ENV)
                 .map(|base| vec![base])
-                .unwrap_or_else(|_| vec![PROD_BASE.into(), DAILY_BASE.into()]),
+                .unwrap_or_else(|_| match source {
+                    QuotaSource::Cli => vec![DAILY_BASE.into()],
+                    QuotaSource::Ide => vec![PROD_BASE.into(), DAILY_BASE.into()],
+                }),
         }
     }
 }
@@ -214,23 +225,50 @@ async fn cloudcode(
     response_json(response, token).await
 }
 
+/// Version of the `agy` on PATH (`agy --version`), or the version the protocol was captured from.
+pub fn detect_agy_version() -> String {
+    let detected = crate::launch::command_on_path("agy").and_then(|path| {
+        let output = crate::launch::agy_command(&path).arg("--version").output().ok()?;
+        if !output.status.success() { return None; }
+        String::from_utf8_lossy(&output.stdout).split_whitespace()
+            .find_map(|word| semver::Version::parse(word.trim_start_matches('v')).ok())
+            .map(|version| version.to_string())
+    });
+    detected.unwrap_or_else(|| "1.4.4".into())
+}
+
+pub fn cli_user_agent() -> String {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    let version = VERSION.get_or_init(detect_agy_version);
+    let os = match std::env::consts::OS { "macos" => "darwin", os => os };
+    let arch = match std::env::consts::ARCH { "aarch64" => "arm64", "x86_64" => "amd64", arch => arch };
+    format!("antigravity/cli/{version} (aidev_client; os_type={os}; arch={arch}; cl=1003595037; auth_method=consumer)")
+}
+
 pub async fn fetch_quota(
     client: &reqwest::Client,
     ep: &Endpoints,
     access_token: &str,
 ) -> Result<AgyQuota, ApiError> {
     let user_agent = std::env::var("PAPER_AGY_SWITCH_USER_AGENT")
-        .unwrap_or_else(|_| "antigravity/1.20.5 windows/amd64".into());
-    let load_body = json!({
+        .unwrap_or_else(|_| match ep.source {
+            QuotaSource::Cli => cli_user_agent(),
+            QuotaSource::Ide => "antigravity/1.20.5 windows/amd64".into(),
+        });
+    let load_body = match ep.source {
+        QuotaSource::Cli => json!({"metadata":{"ideType":"ANTIGRAVITY"}}),
+        QuotaSource::Ide => json!({
         "metadata": {
             "ideName": "antigravity", "ideType": "ANTIGRAVITY", "ideVersion": "1.20.5",
             "pluginVersion": env!("CARGO_PKG_VERSION"), "platform": "WINDOWS_AMD64",
             "updateChannel": "stable", "pluginType": "GEMINI"
         },
         "mode": "FULL_ELIGIBILITY_CHECK"
-    });
+    }),
+    };
+    let bases = if ep.source == QuotaSource::Cli { &ep.bases[..ep.bases.len().min(1)] } else { &ep.bases };
     let mut last_error = ApiError::Network("no Cloud Code endpoints configured".into());
-    for (index, base) in ep.bases.iter().enumerate() {
+    for (index, base) in bases.iter().enumerate() {
         let load = match cloudcode(client, base, "loadCodeAssist", access_token, &user_agent, &load_body).await {
             Ok(load) => load,
             Err(error) if can_fallback(&error) => { last_error = error; continue; }
@@ -247,7 +285,7 @@ pub async fn fetch_quota(
         let mut buckets = Vec::new();
         // Summary is optional, except a rate limit must stop all requests.
         // Retry only that route on remaining bases, keeping the working models.
-        for summary_base in &ep.bases[index..] {
+        for summary_base in &bases[index..] {
             match cloudcode(client, summary_base, "retrieveUserQuotaSummary", access_token, &user_agent, &body).await {
                 Ok(summary) => { buckets = parse_summary(&summary); break; }
                 Err(ApiError::RateLimited) => return Err(ApiError::RateLimited),

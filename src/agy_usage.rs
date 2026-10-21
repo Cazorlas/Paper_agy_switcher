@@ -24,6 +24,11 @@ pub fn profiles() -> Result<Vec<Profile>> {
     }).collect())
 }
 
+/// Cache key of one alias's quota for one source, so CLI and IDE numbers never mix.
+pub fn cache_key(source: crate::config::QuotaSource, alias: &str) -> String {
+    format!("quota:{}:{alias}", source.as_str())
+}
+
 pub async fn fetch_alias(alias: &str, force: bool) -> Result<usage::UsageInfo> {
     let store = store()?;
     let mut blob = store.profile_blob(alias)?;
@@ -35,6 +40,7 @@ pub async fn fetch_alias(alias: &str, force: bool) -> Result<usage::UsageInfo> {
     }
     let client = crate::auth::build_http_client()?;
     let endpoints = agy_api::Endpoints::from_env();
+    let cache_key = cache_key(endpoints.source, alias);
     let expired = !agy_store::access_token_valid(&blob, Utc::now())?;
     if expired {
         let value: Value = serde_json::from_slice(&blob).context("invalid saved credential")?;
@@ -53,14 +59,14 @@ pub async fn fetch_alias(alias: &str, force: bool) -> Result<usage::UsageInfo> {
         }
         store.store_profile_blob(alias, &blob)?;
     } else if !force {
-        if let Some(cached) = cache::get(alias) { return Ok(cached); }
+        if let Some(cached) = cache::get(&cache_key) { return Ok(cached); }
     }
     let value: Value = serde_json::from_slice(&blob).context("invalid saved credential")?;
     let token = value["token"]["access_token"].as_str().context("missing access token")?;
     let quota = agy_api::fetch_quota(&client, &endpoints, token).await?;
     let mut result = agy_api::usage_info(&quota);
     result.fetched_at = Some(auth::now_unix_secs());
-    cache::put(alias, &result);
+    cache::put(&cache_key, &result);
     Ok(result)
 }
 

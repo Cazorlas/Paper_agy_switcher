@@ -85,6 +85,17 @@ Choose the pool used to select the best account in `~/.paper-agy-switch/config.t
 pool = "claude" # default: Claude/GPT group; use "gemini" for Gemini
 ```
 
+### Quota source
+
+Google keeps separate Gemini quotas for the `agy` CLI and for the Antigravity IDE/desktop app, and the two show different numbers. By default the tool shows the **agy CLI** quota, the one `agy -p /usage` prints. Switch to the IDE quota in `~/.paper-agy-switch/config.toml`, or in TUI Settings:
+
+```toml
+[quota]
+source = "cli" # default: agy CLI quota; use "ide" for the Antigravity IDE quota
+```
+
+`list` and the TUI title say which quota is shown (`quota: agy CLI` or `quota: Antigravity IDE`), `list --json` adds `quota_source` to every row, and `doctor` prints the setting. Protocol notes are in [docs/agy-protocol.md](docs/agy-protocol.md).
+
 ### Quota limitations
 
 Observed once (2026-10-21, one account): agy refused Gemini 3.8 Flash with **"Individual quota reached ... Resets in 61h"** while both `retrieveUserQuotaSummary` and the per-model `fetchAvailableModels` reported that model at 100% remaining, and Claude models on the same account still worked. Google enforces limits these endpoints do not report, so the dashboard can show room that a model does not have. Try another model (`agy --model ...`) or another account.

@@ -73,6 +73,7 @@ async fn server_with(path: &'static str, status: StatusCode, body: Value) -> Agy
 
 fn endpoints(servers: &[&AgyServer]) -> Endpoints {
     Endpoints {
+        source: QuotaSource::Ide,
         token_url: format!("{}/token", servers[0].base),
         bases: servers.iter().map(|server| server.base.clone()).collect(),
     }
@@ -224,7 +225,9 @@ async fn agy_api_09_happy_path_headers_metadata_and_project() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _env = EnvGuard::set(&[(USER_AGENT_ENV, None)]);
     let server = AgyServer::start(scripts()).await;
-    let result = fetch_quota(&client(), &endpoints(&[&server]), "test-access").await.unwrap();
+    let mut ep = endpoints(&[&server]);
+    ep.source = QuotaSource::Cli;
+    let result = fetch_quota(&client(), &ep, "test-access").await.unwrap();
     assert_eq!(result.base_used, server.base);
     assert_eq!(result.code_assist, parse_load_code_assist(&fixture(LOAD_PROD)));
     assert_eq!(result.models, parse_models(&fixture(MODELS_PROD)));
@@ -233,16 +236,14 @@ async fn agy_api_09_happy_path_headers_metadata_and_project() {
     assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].path, LOAD);
     assert_eq!(serde_json::from_slice::<Value>(&calls[0].body).unwrap(), json!({
-        "metadata": {"ideName":"antigravity","ideType":"ANTIGRAVITY","ideVersion":"1.20.5",
-            "pluginVersion":env!("CARGO_PKG_VERSION"),"platform":"WINDOWS_AMD64","updateChannel":"stable","pluginType":"GEMINI"},
-        "mode":"FULL_ELIGIBILITY_CHECK"
+        "metadata": {"ideType":"ANTIGRAVITY"}
     }));
     let mut paths: Vec<_> = calls[1..].iter().map(|call| call.path.as_str()).collect();
     paths.sort_unstable();
     assert_eq!(paths, vec![MODELS, SUMMARY]);
     for call in &calls {
         assert_eq!(call.headers["authorization"], "Bearer test-access");
-        assert_eq!(call.headers["user-agent"], "antigravity/1.20.5 windows/amd64");
+        assert_eq!(call.headers["user-agent"], cli_user_agent());
         assert_eq!(call.headers["content-type"], "application/json");
     }
     for call in &calls[1..] {
@@ -315,9 +316,9 @@ fn agy_api_15_endpoints_env_override_and_defaults() {
     assert_eq!(ep.token_url, "http://token");
     let _defaults = EnvGuard::set(&[(CLOUDCODE_URL_ENV, None), (TOKEN_URL_ENV, None)]);
     let ep = Endpoints::from_env();
-    assert_eq!(ep.bases, vec!["https://cloudcode-pa.googleapis.com", "https://daily-cloudcode-pa.googleapis.com"]);
+    assert_eq!(ep.bases, vec!["https://daily-cloudcode-pa.googleapis.com"]);
     assert_eq!(ep.token_url, "https://oauth2.googleapis.com/token");
-    assert_eq!(ep.bases, vec![PROD_BASE, DAILY_BASE]);
+    assert_eq!(ep.bases, vec![DAILY_BASE]);
     assert_eq!(ep.token_url, TOKEN_URL);
 }
 
@@ -353,7 +354,66 @@ async fn agy_api_18_network_error_falls_back() {
     let unavailable = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
     let b = AgyServer::start(scripts()).await;
-    let ep = Endpoints { token_url: format!("{}/token", b.base), bases: vec![unavailable, b.base.clone()] };
+    let ep = Endpoints { source: QuotaSource::Ide, token_url: format!("{}/token", b.base), bases: vec![unavailable, b.base.clone()] };
     let result = fetch_quota(&client(), &ep, "tok").await.unwrap();
     assert_eq!(result.base_used, b.base);
+}
+
+#[tokio::test]
+async fn agy_api_19_ide_preserves_protocol_and_fallback() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set(&[(USER_AGENT_ENV, None), (CLOUDCODE_URL_ENV, None)]);
+    assert_eq!(Endpoints::for_source(QuotaSource::Ide).bases, vec![PROD_BASE, DAILY_BASE]);
+    let a = server_with(LOAD, StatusCode::SERVICE_UNAVAILABLE, json!({})).await;
+    let b = AgyServer::start(scripts()).await;
+    let result = fetch_quota(&client(), &endpoints(&[&a, &b]), "tok").await.unwrap();
+    assert_eq!(result.base_used, b.base);
+    assert_eq!(a.calls().len(), 1);
+    assert_eq!(b.calls().len(), 3);
+    for call in a.calls().iter().chain(b.calls().iter()) {
+        assert_eq!(call.headers["user-agent"], "antigravity/1.20.5 windows/amd64");
+    }
+    assert_eq!(serde_json::from_slice::<Value>(&b.calls()[0].body).unwrap(), json!({
+        "metadata": {"ideName":"antigravity","ideType":"ANTIGRAVITY","ideVersion":"1.20.5",
+            "pluginVersion":env!("CARGO_PKG_VERSION"),"platform":"WINDOWS_AMD64","updateChannel":"stable","pluginType":"GEMINI"},
+        "mode":"FULL_ELIGIBILITY_CHECK"
+    }));
+}
+
+#[tokio::test]
+async fn agy_api_20_cli_never_uses_second_base() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for route in [LOAD, MODELS, SUMMARY] {
+        let a = server_with(route, StatusCode::SERVICE_UNAVAILABLE, json!({})).await;
+        let b = AgyServer::start(scripts()).await;
+        let mut ep = endpoints(&[&a, &b]);
+        ep.source = QuotaSource::Cli;
+        let result = fetch_quota(&client(), &ep, "tok").await;
+        if route == SUMMARY { assert!(result.unwrap().buckets.is_empty()); }
+        else { assert!(matches!(result, Err(ApiError::Http { status: 503, .. }))); }
+        assert!(b.calls().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn agy_api_21_cli_user_agent_override_wins() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvGuard::set(&[(USER_AGENT_ENV, Some("custom/7"))]);
+    let server = AgyServer::start(scripts()).await;
+    let mut ep = endpoints(&[&server]);
+    ep.source = QuotaSource::Cli;
+    fetch_quota(&client(), &ep, "tok").await.unwrap();
+    assert!(server.calls().iter().all(|call| call.headers["user-agent"] == "custom/7"));
+    let _env = EnvGuard::set(&[(CLOUDCODE_URL_ENV, Some("http://override"))]);
+    for source in [QuotaSource::Cli, QuotaSource::Ide] {
+        assert_eq!(Endpoints::for_source(source).bases, vec!["http://override"]);
+    }
+}
+
+#[test]
+fn agy_api_22_version_detection_falls_back_when_agy_is_missing() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let empty = tempfile::tempdir().unwrap();
+    let _env = EnvGuard::set(&[("PATH", Some(empty.path().to_str().unwrap()))]);
+    assert_eq!(detect_agy_version(), "1.4.4");
 }

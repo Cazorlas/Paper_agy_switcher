@@ -6,3 +6,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: cargo test --locked
+  build-unix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: cargo build --locked --all-targets

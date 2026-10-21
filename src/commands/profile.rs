@@ -3,8 +3,7 @@ use serde_json::{Value, json};
 use crate::{agy_store, agy_usage, cache, color, output, profile, usage};
 
 pub(crate) fn switch_alias(alias: &str) -> Result<agy_store::SwitchOutcome> {
-    let _lock = profile::lock_live_auth()?;
-    let result = agy_usage::store()?.switch_to(alias)?;
+    let result = profile::switch_profile(alias)?;
     if let Err(error) = cache::set_last_used(alias) {
         tracing::warn!("could not record last use: {error}");
     }
@@ -59,7 +58,7 @@ pub(crate) async fn select_best_profile(_json: bool) -> Result<SelectOutcome> {
 }
 
 fn usage_json(value: &usage::UsageInfo) -> Value {
-    let gemini = value.additional_limits.iter().find(|p| p.limit_name.as_deref() == Some("Gemini"));
+    let gemini = usage::gemini_pool(value);
     json!({"primary":value.primary,"secondary":value.secondary,"gemini":{
         "primary":gemini.and_then(|p| p.primary.as_ref()),
         "secondary":gemini.and_then(|p| p.secondary.as_ref())
@@ -98,7 +97,7 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
             print!("{} {}  {}  {}", if is_active { color::active("*") } else { " ".into() }, color::bold(&p.alias),
                 p.email.as_deref().unwrap_or("unknown email"), tier.unwrap_or("--"));
             if let Some(value) = &value {
-                let gemini = value.additional_limits.iter().find(|p| p.limit_name.as_deref() == Some("Gemini"));
+                let gemini = usage::gemini_pool(value);
                 print!("  {} | {}  {} | {}", window_text(value.primary.as_ref()), window_text(value.secondary.as_ref()),
                     window_text(gemini.and_then(|p| p.primary.as_ref())), window_text(gemini.and_then(|p| p.secondary.as_ref())));
             }

@@ -21,6 +21,7 @@ enum Focus {
     TuiRefresh,
     SafetyMargin,
     TeamPriority,
+    Pool,
 }
 
 const FOCUS_ORDER: &[Focus] = &[
@@ -31,6 +32,7 @@ const FOCUS_ORDER: &[Focus] = &[
     Focus::TuiRefresh,
     Focus::SafetyMargin,
     Focus::TeamPriority,
+    Focus::Pool,
 ];
 
 pub struct SettingsState {
@@ -205,6 +207,7 @@ impl SettingsState {
                 self.draft.use_cfg.team_priority = !self.draft.use_cfg.team_priority;
                 self.dirty = true;
             }
+            Focus::Pool => self.toggle_pool(),
             _ => self.begin_edit(),
         }
     }
@@ -215,8 +218,15 @@ impl SettingsState {
                 self.draft.use_cfg.team_priority = !self.draft.use_cfg.team_priority;
                 self.dirty = true;
             }
+            Focus::Pool if delta != 0 => self.toggle_pool(),
             _ => {}
         }
+    }
+
+    fn toggle_pool(&mut self) {
+        use crate::config::ScoringPool;
+        self.draft.use_cfg.pool = match self.draft.use_cfg.pool { ScoringPool::ThirdParty => ScoringPool::Gemini, ScoringPool::Gemini => ScoringPool::ThirdParty };
+        self.dirty = true;
     }
 
     fn begin_edit(&mut self) {
@@ -227,7 +237,7 @@ impl SettingsState {
             Focus::MaxConcurrent => self.draft.network.max_concurrent.to_string(),
             Focus::TuiRefresh => self.draft.tui.auto_refresh_interval_secs.to_string(),
             Focus::SafetyMargin => format_num(self.draft.use_cfg.safety_margin_7d),
-            Focus::TeamPriority => return,
+            Focus::TeamPriority | Focus::Pool => return,
         };
         self.input = value;
         self.cursor = self.input.chars().count();
@@ -254,7 +264,7 @@ impl SettingsState {
             Focus::SafetyMargin => {
                 self.draft.use_cfg.safety_margin_7d = parse_f64(&raw, "use.safety_margin_7d")?;
             }
-            Focus::TeamPriority => {}
+            Focus::TeamPriority | Focus::Pool => {}
         }
         self.dirty = true;
         Ok(())
@@ -373,6 +383,7 @@ fn field_hint(focus: Focus) -> &'static str {
         Focus::TuiRefresh => "Seconds between refreshes while `t` auto-refresh is on (minimum 30).",
         Focus::SafetyMargin => "7d headroom % below which auto-select penalizes an account.",
         Focus::TeamPriority => "Prefer Team-plan accounts when auto-selecting.",
+        Focus::Pool => "Quota group used for scoring: claude | gemini. Enter or arrows toggle it.",
     }
 }
 
@@ -525,6 +536,11 @@ pub fn render_settings_tab(
         &mut line_focus,
         &mut focused_line,
     );
+    push_field(
+        settings, Focus::Pool, "use.pool",
+        match settings.draft.use_cfg.pool { crate::config::ScoringPool::ThirdParty => "claude", crate::config::ScoringPool::Gemini => "gemini" }.into(),
+        &mut lines, &mut line_focus, &mut focused_line,
+    );
     lines.push(Line::from(""));
     line_focus.push(None);
     if let Some(error) = &settings.error {
@@ -614,7 +630,7 @@ mod tests {
             safety_margin_7d: _,
             team_priority: _,
         } = use_cfg;
-        assert_eq!(FOCUS_ORDER.len(), 7);
+        assert_eq!(FOCUS_ORDER.len(), 8);
     }
 
     fn type_value(settings: &mut SettingsState, value: &str) {
@@ -663,6 +679,8 @@ mod tests {
         type_value(&mut settings, "15");
         move_to(&mut settings, Focus::TeamPriority);
         settings.handle_key(KeyCode::Enter);
+        move_to(&mut settings, Focus::Pool);
+        settings.handle_key(KeyCode::Enter);
         assert!(settings.is_dirty());
 
         match settings.try_save() {
@@ -682,12 +700,30 @@ mod tests {
         assert_eq!(loaded.tui.auto_refresh_interval_secs, 60);
         assert_eq!(loaded.use_cfg.safety_margin_7d, 15.0);
         assert!(!loaded.use_cfg.team_priority);
+        assert_eq!(loaded.use_cfg.pool, crate::config::ScoringPool::Gemini);
         unsafe {
             match prev_cs {
                 Some(v) => std::env::set_var("PAPER_AGY_SWITCH_HOME", v),
                 None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
             }
         }
+    }
+
+    #[test]
+    fn pool_toggle_serializes_and_reloads() {
+        use crate::config::ScoringPool;
+        let mut settings = SettingsState::from_config(AppConfig::default());
+        move_to(&mut settings, Focus::Pool);
+        assert_eq!(settings.draft.use_cfg.pool, ScoringPool::ThirdParty);
+        settings.handle_key(KeyCode::Right);
+        assert!(settings.is_dirty());
+        assert!(!settings.is_editing());
+        assert_eq!(settings.draft.use_cfg.pool, ScoringPool::Gemini);
+        let serialized = toml::to_string(&settings.draft).unwrap();
+        let loaded: AppConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(loaded.use_cfg.pool, ScoringPool::Gemini);
+        settings.handle_key(KeyCode::Enter);
+        assert_eq!(settings.draft.use_cfg.pool, ScoringPool::ThirdParty);
     }
 
     #[test]

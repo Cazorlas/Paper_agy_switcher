@@ -5,10 +5,10 @@
 ///
 /// Binding rules (letter must match the verb shown in the UI):
 /// - Same action uses the same key on every tab.
-/// - `o` launches Claude Code. `l` is re-login on Accounts (and batch). Never bind
+/// - `o` launches agy. `l` is re-login on Accounts (and batch). Never bind
 ///   launch to `l`: that letter already means login.
-/// - Enter opens the selected row (Accounts: action menu, Providers: launch
-///   picker). `e` edits a provider. In a dialog, Enter confirms and Esc cancels.
+/// - Enter switches the selected account. Double-click opens its action menu.
+///   In a dialog, Enter confirms and Esc cancels.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
@@ -90,7 +90,7 @@ pub const KEYMAP: &[Binding] = &[
     Binding {
         keys: "enter",
         section: Section::Account,
-        label: "open selected account actions",
+        label: "use (switch to) selected account",
         in_status_bar: true,
     },
     Binding {
@@ -102,7 +102,7 @@ pub const KEYMAP: &[Binding] = &[
     Binding {
         keys: "o",
         section: Section::Account,
-        label: "launch Claude Code",
+        label: "launch agy",
         in_status_bar: true,
     },
     Binding {
@@ -127,12 +127,6 @@ pub const KEYMAP: &[Binding] = &[
         keys: "d",
         section: Section::Account,
         label: "delete (in the Enter menu)",
-        in_status_bar: false,
-    },
-    Binding {
-        keys: "c",
-        section: Section::Account,
-        label: "use a usage-limit reset (in the Enter menu)",
         in_status_bar: false,
     },
     // Batch actions
@@ -306,16 +300,6 @@ mod tests {
                 binding.label
             );
         }
-    }
-
-    /// K1: the help documents `c` as the reset action of the account menu.
-    #[test]
-    fn help_documents_the_reset_key_of_the_account_menu() {
-        let binding = super::KEYMAP
-            .iter()
-            .find(|binding| binding.section == super::Section::Account && binding.keys == "c")
-            .expect("missing Accounts `c` binding");
-        assert!(binding.label.contains("reset"), "label: {}", binding.label);
     }
 
     #[test]

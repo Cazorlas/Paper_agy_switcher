@@ -12,7 +12,7 @@ use crate::output::user_println;
 
 const MAX_ALIAS_LEN: usize = 64;
 
-/// The saved Claude credentials of a profile (`credentials.json`).
+/// The saved Antigravity credentials of a profile (`credentials.json`).
 pub fn profile_auth_path(alias: &str) -> Result<PathBuf> {
     Ok(profiles_dir()?.join(alias).join("credentials.json"))
 }
@@ -51,6 +51,7 @@ pub fn list_profiles() -> Result<Vec<String>> {
     Ok(names)
 }
 
+#[cfg(test)]
 pub fn read_current() -> String {
     current_file()
         .and_then(|p| std::fs::read_to_string(p).map_err(Into::into))
@@ -237,44 +238,35 @@ fn write_current(alias: &str) -> Result<()> {
     Ok(())
 }
 
-/// The profile of the live Claude account; the `current` marker is repaired
-/// to name it.
+/// Determine the active profile from live Antigravity credentials under the auth lock.
 pub fn sync_current_from_live() -> Option<String> {
-    crate::claude_usage::current_active()
+    let _lock = lock_live_auth().ok()?;
+    let active = crate::agy_usage::store().ok()?.active_alias().ok()?;
+    if let Some(alias) = &active {
+        if let Err(error) = write_current(alias) { tracing::warn!("could not repair current marker: {error}"); }
+    }
+    active
 }
 
-/// Make `alias` the live Claude account. The app lock is held so two
-/// processes (`auto`, the TUI, a command) never swap or refresh at once.
-pub fn switch_profile(alias: &str) -> Result<crate::claude_store::SwitchOutcome> {
+/// Switch live credentials while excluding concurrent refreshes and saves.
+pub fn switch_profile(alias: &str) -> Result<crate::agy_store::SwitchOutcome> {
     validate_alias(alias)?;
-    let paths = crate::claude_usage::paths()?;
     let _lock = lock_live_auth()?;
-    crate::claude_store::switch_to(
-        &paths,
-        &app_home()?,
-        alias,
-        &crate::claude_store::LockOptions::default(),
-    )
+    let outcome = crate::agy_usage::store()?.switch_to(alias)?;
+    if let Err(error) = write_current(alias) { tracing::warn!("could not update current marker: {error}"); }
+    Ok(outcome)
 }
 
-/// Switch only if the live Claude account still belongs to `expected`, so a
-/// decision made on stale numbers never overrides a switch made by another
-/// process in the meantime.
+/// A stale selection must not override a newer manual switch.
 #[cfg(test)]
 pub fn switch_profile_if_current(expected: &str, alias: &str) -> Result<bool> {
     validate_alias(expected)?;
     validate_alias(alias)?;
-    let paths = crate::claude_usage::paths()?;
     let _lock = lock_live_auth()?;
-    if crate::claude_usage::current_active().as_deref() != Some(expected) {
-        return Ok(false);
-    }
-    crate::claude_store::switch_to(
-        &paths,
-        &app_home()?,
-        alias,
-        &crate::claude_store::LockOptions::default(),
-    )?;
+    let store = crate::agy_usage::store()?;
+    if store.active_alias()?.as_deref() != Some(expected) { return Ok(false); }
+    store.switch_to(alias)?;
+    write_current(alias)?;
     Ok(true)
 }
 
@@ -362,6 +354,7 @@ pub fn rename_profile(old_alias: &str, new_alias: &str) -> Result<()> {
         anyhow::bail!("profile '{new_alias}' already exists");
     }
     let _transaction = lock_auth_transaction()?;
+    let was_active = crate::agy_usage::store()?.active_alias()?.as_deref() == Some(old_alias);
     std::fs::rename(&old_dir, &new_dir).with_context(|| {
         format!(
             "renaming profile {} -> {}",
@@ -372,7 +365,7 @@ pub fn rename_profile(old_alias: &str, new_alias: &str) -> Result<()> {
     if let Err(err) = crate::cache::rename(old_alias, new_alias) {
         tracing::warn!("Failed to rename cache entry {old_alias} -> {new_alias}: {err}");
     }
-    if read_current() == old_alias {
+    if was_active {
         write_current(new_alias)?;
     }
     user_println(&format!("Renamed profile: {old_alias} -> {new_alias}"));
@@ -401,7 +394,7 @@ mod tests {
         _home: tempfile::TempDir,
         old_home: Option<OsString>,
         old_app_home: Option<OsString>,
-        old_claude_config_dir: Option<OsString>,
+        old_credential_file: Option<OsString>,
     }
 
     struct ThreadCleanup<G> {
@@ -458,10 +451,10 @@ mod tests {
             let app_home = home.path().join(".paper-agy-switch");
             let old_home = std::env::var_os("HOME");
             let old_app_home = std::env::var_os("PAPER_AGY_SWITCH_HOME");
-            let old_claude_config_dir = std::env::var_os("CLAUDE_CONFIG_DIR");
+            let old_credential_file = std::env::var_os("PAPER_AGY_SWITCH_CREDENTIAL_FILE");
 
             unsafe {
-                std::env::set_var("CLAUDE_CONFIG_DIR", home.path().join(".claude"));
+                std::env::set_var("PAPER_AGY_SWITCH_CREDENTIAL_FILE", home.path().join("live.json"));
                 std::env::set_var("HOME", home.path());
                 std::env::set_var("PAPER_AGY_SWITCH_HOME", &app_home);
             }
@@ -471,7 +464,7 @@ mod tests {
                 _home: home,
                 old_home,
                 old_app_home,
-                old_claude_config_dir,
+                old_credential_file,
             }
         }
     }
@@ -487,9 +480,9 @@ mod tests {
                     Some(value) => std::env::set_var("PAPER_AGY_SWITCH_HOME", value),
                     None => std::env::remove_var("PAPER_AGY_SWITCH_HOME"),
                 }
-                match &self.old_claude_config_dir {
-                    Some(value) => std::env::set_var("CLAUDE_CONFIG_DIR", value),
-                    None => std::env::remove_var("CLAUDE_CONFIG_DIR"),
+                match &self.old_credential_file {
+                    Some(value) => std::env::set_var("PAPER_AGY_SWITCH_CREDENTIAL_FILE", value),
+                    None => std::env::remove_var("PAPER_AGY_SWITCH_CREDENTIAL_FILE"),
                 }
             }
         }
@@ -500,49 +493,30 @@ mod tests {
         std::fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     }
 
-    fn claude_oauth(token: &str) -> serde_json::Value {
+    fn credential(alias: &str, token: &str) -> serde_json::Value {
+        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&serde_json::json!({
+            "sub": format!("U-{alias}"), "email": format!("{alias}@example.com")
+        })).unwrap());
         serde_json::json!({
-            "accessToken": token,
-            "refreshToken": format!("refresh-{token}"),
-            "expiresAt": 4_102_444_800_000_i64,
+            "token": {"access_token": token, "refresh_token": format!("refresh-{token}"), "expiry":"2099-01-01T00:00:00Z"},
+            "id_token": format!("e30.{payload}.")
         })
     }
 
-    fn claude_account(alias: &str) -> serde_json::Value {
-        serde_json::json!({
-            "accountUuid": format!("U-{alias}"),
-            "emailAddress": format!("{alias}@example.com"),
-        })
+    fn seed_profile(alias: &str, token: &str) {
+        write_json_file(&super::profile_auth_path(alias).unwrap(), credential(alias, token));
     }
 
-    /// A saved Claude profile for account `U-<alias>`.
-    fn seed_claude_profile(alias: &str, token: &str) {
-        let dir = super::profiles_dir().unwrap().join(alias);
-        write_json_file(
-            &dir.join("credentials.json"),
-            serde_json::json!({"claudeAiOauth": claude_oauth(token)}),
-        );
-        write_json_file(&dir.join("account.json"), claude_account(alias));
+    fn write_live(alias: &str, token: &str) {
+        let path = std::path::PathBuf::from(std::env::var_os("PAPER_AGY_SWITCH_CREDENTIAL_FILE").unwrap());
+        write_json_file(&path, credential(alias, token));
     }
 
-    /// Claude Code logged in as account `U-<alias>`.
-    fn write_live_claude(alias: &str, token: &str) {
-        let paths = crate::claude_usage::paths().unwrap();
-        write_json_file(
-            &paths.credentials,
-            serde_json::json!({"claudeAiOauth": claude_oauth(token)}),
-        );
-        write_json_file(
-            &paths.global_config,
-            serde_json::json!({"oauthAccount": claude_account(alias)}),
-        );
-    }
-
-    fn live_claude_token() -> String {
-        let live = crate::claude_store::read_live(&crate::claude_usage::paths().unwrap())
-            .unwrap()
-            .unwrap();
-        live.oauth["accessToken"].as_str().unwrap().to_owned()
+    fn live_token() -> String {
+        let live = crate::agy_usage::store().unwrap().read_live().unwrap().unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&live).unwrap();
+        value["token"]["access_token"].as_str().unwrap().to_owned()
     }
 
     fn assert_invalid_alias(result: Result<()>, expected_message: &str) {
@@ -615,9 +589,9 @@ mod tests {
     fn switch_profile_waits_for_auth_lock() {
         let _env = TestEnv::new();
 
-        seed_claude_profile("current", "acc_old");
-        write_live_claude("current", "acc_old");
-        seed_claude_profile("next-profile", "acc_new");
+        seed_profile("current", "acc_old");
+        write_live("current", "acc_old");
+        seed_profile("next-profile", "acc_new");
 
         let lock_path = super::auth_lock_path().unwrap();
         let lock_file = std::fs::OpenOptions::new()
@@ -648,7 +622,7 @@ mod tests {
             ),
             "switch should block while auth lock is held"
         );
-        assert_eq!(live_claude_token(), "acc_old");
+        assert_eq!(live_token(), "acc_old");
 
         cleanup.release_blocker();
 
@@ -657,7 +631,7 @@ mod tests {
             .expect("switch did not finish after auth lock release")
             .unwrap();
         cleanup.join_all();
-        assert_eq!(live_claude_token(), "acc_new");
+        assert_eq!(live_token(), "acc_new");
         assert_eq!(super::read_current(), "next-profile");
     }
 
@@ -666,7 +640,7 @@ mod tests {
         let _env = TestEnv::new();
         for (alias, access) in [("alpha", "access-a"), ("beta", "access-b"), ("charlie", "access-c")]
         {
-            seed_claude_profile(alias, access);
+            seed_profile(alias, access);
         }
 
         switch_profile("alpha").unwrap();
@@ -674,9 +648,9 @@ mod tests {
 
         assert!(!switch_profile_if_current("alpha", "beta").unwrap());
         assert_eq!(super::read_current(), "charlie");
-        assert_eq!(live_claude_token(), "access-c");
+        assert_eq!(live_token(), "access-c");
         assert!(switch_profile_if_current("charlie", "beta").unwrap());
-        assert_eq!(live_claude_token(), "access-b");
+        assert_eq!(live_token(), "access-b");
     }
 
     #[test]
@@ -706,14 +680,36 @@ mod tests {
     }
 
     #[test]
+    fn delete_checks_live_identity_even_when_marker_is_stale() {
+        let _env = TestEnv::new();
+        seed_profile("active", "access");
+        write_live("active", "new-access");
+        super::write_current("stale").unwrap();
+        assert!(cmd_delete("active").unwrap_err().to_string().contains("active"));
+        assert!(super::profile_auth_path("active").unwrap().exists());
+    }
+
+    #[test]
+    fn rename_repairs_active_marker_from_live_identity() {
+        let _env = TestEnv::new();
+        seed_profile("active", "access");
+        write_live("active", "new-access");
+        super::write_current("stale").unwrap();
+        rename_profile("active", "renamed").unwrap();
+        assert_eq!(super::read_current(), "renamed");
+        assert_eq!(crate::agy_usage::store().unwrap().active_alias().unwrap().as_deref(), Some("renamed"));
+        assert_eq!(live_token(), "new-access");
+    }
+
+    #[test]
     fn sync_current_from_live_matches_live_identity() {
         let _env = TestEnv::new();
 
-        seed_claude_profile("alpha", "acc_a");
-        seed_claude_profile("beta", "acc_b_old");
+        seed_profile("alpha", "acc_a");
+        seed_profile("beta", "acc_b_old");
 
         super::write_current("alpha").unwrap();
-        write_live_claude("beta", "acc_b_new");
+        write_live("beta", "acc_b_new");
 
         assert_eq!(super::sync_current_from_live().as_deref(), Some("beta"));
         assert_eq!(super::read_current(), "beta");

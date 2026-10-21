@@ -66,8 +66,8 @@ pub async fn fetch_alias(alias: &str, force: bool) -> Result<usage::UsageInfo> {
 
 pub fn scoring_usage(mut value: usage::UsageInfo) -> usage::UsageInfo {
     if config::get().use_cfg.pool == config::ScoringPool::Gemini {
-        let pool = value.additional_limits.iter().find(|p| p.limit_name.as_deref() == Some("Gemini"));
-        value.primary = pool.and_then(|p| p.primary.clone());
+        let pool = usage::gemini_pool(&value).cloned();
+        value.primary = pool.as_ref().and_then(|p| p.primary.clone());
         value.secondary = pool.and_then(|p| p.secondary.clone());
     }
     value

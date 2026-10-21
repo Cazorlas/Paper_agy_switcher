@@ -67,11 +67,6 @@ pub struct UsageInfo {
     /// Subscription status from the profile endpoint ("active", "canceled",
     /// "past_due", ...), when known.
     pub subscription_status: Option<String>,
-    /// Claude's "reset your session limit" offer, when the account has one.
-    pub session_reset: Option<crate::claude_api::SessionReset>,
-    pub reset_grants: Option<Vec<crate::claude_api::ResetGrant>>,
-    /// Id of the grant a reset would be claimed with, when one is usable.
-    pub next_reset_grant: Option<String>,
 }
 
 /// One assembled display row for an additional-limit pool. Pure data,
@@ -98,6 +93,20 @@ pub fn additional_pool_rows(limits: &[AdditionalRateLimit]) -> Vec<PoolRow> {
             secondary: l.secondary.clone(),
         })
         .collect()
+}
+
+/// Render a compact quota window for account rows.
+pub fn window_text(window: Option<&WindowUsage>) -> String {
+    window.map(|window| {
+        let used = window.used_percent.map(|used| format!("{used:.0}%")).unwrap_or_else(|| "--".into());
+        let reset = window.resets_at.map(crate::output::format_reset_short).unwrap_or_else(|| "--".into());
+        format!("{used} (resets {reset})")
+    }).unwrap_or_else(|| "--".into())
+}
+
+/// The second quota group; absent windows stay unknown rather than becoming zero.
+pub fn gemini_pool(value: &UsageInfo) -> Option<&AdditionalRateLimit> {
+    value.additional_limits.iter().find(|pool| pool.limit_name.as_deref() == Some("Gemini"))
 }
 
 /// All data needed to score an account. Pure data, no I/O.
@@ -204,17 +213,16 @@ pub enum Refresh {
     Forced,
 }
 
-/// Claude usage for a saved profile, served from the usage cache when fresh.
-/// The active account is read with its live token and never refreshed here.
+/// Antigravity quota for a saved profile, served from the cache when fresh.
 pub async fn fetch_usage_retried(alias: &str) -> std::result::Result<UsageInfo, UsageError> {
-    crate::claude_usage::fetch_alias(alias, false).await
+    fetch_account_usage(alias, false).await
 }
 
 /// Bypass the usage TTL for current numbers. Used by background refreshes.
 pub async fn fetch_usage_retried_unattended(
     alias: &str,
 ) -> std::result::Result<UsageInfo, UsageError> {
-    crate::claude_usage::fetch_alias(alias, true).await
+    fetch_account_usage(alias, true).await
 }
 
 /// Bypass every cache. For a person explicitly asking again, or a decision
@@ -222,7 +230,36 @@ pub async fn fetch_usage_retried_unattended(
 pub async fn fetch_usage_retried_force(
     alias: &str,
 ) -> std::result::Result<UsageInfo, UsageError> {
-    crate::claude_usage::fetch_alias(alias, true).await
+    fetch_account_usage(alias, true).await
+}
+
+async fn fetch_account_usage(alias: &str, force: bool) -> Result<UsageInfo, UsageError> {
+    crate::agy_usage::fetch_alias(alias, force).await.map_err(|error| {
+        let message = error.to_string();
+        UsageError { summary: message.clone(), detail: message }
+    })
+}
+
+/// Saved identity and optional plan metadata used by scoring and account views.
+#[derive(Debug, Default, Clone)]
+pub struct AccountInfo {
+    pub email: Option<String>,
+    pub account_id: Option<String>,
+    pub plan_type: Option<String>,
+    pub workspace_name: Option<String>,
+}
+
+impl AccountInfo {
+    pub fn plan_label(&self) -> String { self.plan_label_with(self.plan_type.as_deref()) }
+    pub fn plan_label_with(&self, plan: Option<&str>) -> String {
+        let label = plan.unwrap_or("--");
+        match &self.workspace_name {
+            Some(name) if !name.is_empty() => format!("{label} - {name}"),
+            _ => label.to_owned(),
+        }
+    }
+    pub fn is_team(&self) -> bool { self.plan_type.as_deref() == Some("team") || self.workspace_name.is_some() }
+    pub fn is_free(&self) -> bool { matches!(self.plan_type.as_deref(), Some("free") | None) }
 }
 
 /// Structured error for usage fetch failures.

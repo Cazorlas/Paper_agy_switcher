@@ -2,7 +2,6 @@
 
 pub mod scenarios;
 pub mod agy;
-pub mod claude_api;
 pub mod transformer;
 
 use std::collections::HashMap;

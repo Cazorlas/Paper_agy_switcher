@@ -1,7 +1,7 @@
 /// TUI menu state machines for Phase 2:
 ///   - Account menu (single-account actions)
-///   - Add menu (save the current Claude Code login as a new account)
-///   - Re-login menu (save the current Claude Code login into an account)
+///   - Add menu (save the current Antigravity login as a new account)
+///   - Re-login menu (save the current Antigravity login into an account)
 use ratatui::{
     Frame,
     layout::Rect,
@@ -52,20 +52,6 @@ pub struct AccountMenuInfo {
     pub usage_meta: Vec<String>,
 }
 
-impl AccountMenuInfo {
-    /// True when the loaded usage names a grant a reset can be used with.
-    fn reset_usable(&self) -> bool {
-        self.usage.as_deref().is_some_and(|usage| {
-            crate::claude_api::usable_reset_grant(
-                usage.reset_grants.as_deref(),
-                usage.next_reset_grant.as_deref(),
-                crate::auth::now_unix_secs(),
-            )
-            .is_some()
-        })
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum MenuAction {
     /// Keep the menu open and ignore the key.
@@ -74,13 +60,13 @@ pub enum MenuAction {
     Close,
     /// Switch to alias.
     Use(String),
-    /// Switch to alias, then start Claude Code.
+    /// Switch to alias, then start Antigravity.
     Launch(String),
     /// Open re-login flow chooser for alias.
     ReloginRequest(String, Option<String>),
     /// Trigger re-login with chosen flow.
     Relogin { alias: String, device: bool },
-    /// Save the current Claude Code login as a new account.
+    /// Save the current Antigravity login as a new account.
     Add { device: bool },
     /// Refresh usage and model metadata for one account.
     RefreshOne(String),
@@ -88,8 +74,6 @@ pub enum MenuAction {
     Rename(String),
     /// Request delete confirmation for alias.
     DeleteRequest(String),
-    /// Ask to use one usage-limit reset of alias.
-    UseReset(String),
 
     // Batch actions ────────────────────────────
     /// Force-refresh all marked accounts.
@@ -304,9 +288,6 @@ impl MenuState {
                 KeyCode::Char('r') => MenuAction::RefreshOne(info.alias.clone()),
 
                 KeyCode::Char('d') => MenuAction::DeleteRequest(info.alias.clone()),
-                KeyCode::Char('c') if info.reset_usable() => {
-                    MenuAction::UseReset(info.alias.clone())
-                }
                 _ => MenuAction::Noop,
             },
             MenuState::Add { .. } => match code {
@@ -415,7 +396,6 @@ impl MenuState {
                     ("l", "login", true),
                     ("n", "rename", true),
                     ("d", "delete", true),
-                    ("c", "reset", info.reset_usable()),
                 ];
                 for row in [&actions[..4], &actions[4..]] {
                     let mut action_spans = Vec::new();
@@ -470,10 +450,10 @@ impl MenuState {
             }
             MenuState::Add { popup } => {
                 let title = "Add new account";
-                let items = [("s", "Save the current Claude Code login")];
+                let items = [("s", "Save the current Antigravity login")];
                 let mut lines: Vec<Line<'static>> = Vec::new();
                 lines.push(Line::from(Span::styled(
-                    "Log in to Claude Code first (claude, then /login; do not /logout).",
+                    "Log in to Antigravity first (agy sign-in).",
                     header_style,
                 )));
                 lines.push(Line::from(""));
@@ -494,12 +474,12 @@ impl MenuState {
                     Some(e) => format!("{alias}  ({e})"),
                     None => alias.clone(),
                 };
-                let items = [("s", "Save the current Claude Code login into this account")];
+                let items = [("s", "Save the current Antigravity login into this account")];
                 let mut lines: Vec<Line<'static>> =
                     vec![Line::from(Span::styled(header, header_style))];
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    "In Claude Code, run /login with this account first.",
+                    "In Antigravity, sign in with this account first.",
                     header_style,
                 )));
                 lines.push(Line::from(""));
@@ -616,39 +596,18 @@ mod tests {
         ));
     }
 
-    fn grant(id: &str, resets_left: u32) -> crate::claude_api::ResetGrant {
-        crate::claude_api::ResetGrant {
-            id: id.into(),
-            paused: false,
-            clears: Vec::new(),
-            label: "Launch reset".into(),
-            resets_left,
-            resets_total: 1,
-            ends_at: Some("2099-10-22T16:00:00Z".into()),
-            usable_now: true,
-        }
-    }
-
     fn reset_menu(usage: Option<UsageInfo>) -> MenuState {
         MenuState::account(AccountMenuInfo {
             alias: "work".into(),
             email: None,
             account_id: None,
-            plan_label: "Max".into(),
+            plan_label: "g1-pro-tier".into(),
             plan_type: None,
             is_current: false,
             auth_expiries: Vec::new(),
             usage: usage.map(Box::new),
             usage_meta: Vec::new(),
         })
-    }
-
-    fn usage_with_grant(next: Option<&str>) -> UsageInfo {
-        UsageInfo {
-            reset_grants: Some(vec![grant("g1", 0), grant("g2", 1)]),
-            next_reset_grant: next.map(str::to_owned),
-            ..Default::default()
-        }
     }
 
     /// Screen text plus the cell column of the first `needle` on any row.
@@ -676,47 +635,10 @@ mod tests {
         (terminal, rendered.expect("menu fits the test terminal"))
     }
 
-    /// M1: with a usable grant, `c` asks to use a reset and the action is drawn and clickable.
-    #[test]
-    fn c_uses_a_reset_when_a_grant_is_usable() {
-        let mut menu = reset_menu(Some(usage_with_grant(Some("g2"))));
-        assert!(matches!(
-            menu.handle_key(KeyCode::Char('c')),
-            MenuAction::UseReset(alias) if alias == "work"
-        ));
-
-        let (terminal, rendered) = render_menu(&mut menu);
-
-        assert!(find_text(terminal.backend(), "c reset").is_some(), "popup shows `c reset`");
-        assert!(
-            rendered.actions.iter().any(|(_, code)| *code == KeyCode::Char('c')),
-            "a hit area for `c`: {:?}",
-            rendered.actions
-        );
-    }
-
-    /// M2: without a usable grant `c` does nothing, the action is still drawn but not clickable.
-    #[test]
-    fn c_does_nothing_without_a_usable_grant() {
-        for usage in [None, Some(usage_with_grant(None))] {
-            let mut menu = reset_menu(usage);
-            assert!(matches!(menu.handle_key(KeyCode::Char('c')), MenuAction::Noop));
-
-            let (terminal, rendered) = render_menu(&mut menu);
-
-            assert!(find_text(terminal.backend(), "c reset").is_some(), "`c reset` still drawn");
-            assert!(
-                !rendered.actions.iter().any(|(_, code)| *code == KeyCode::Char('c')),
-                "no hit area for `c`: {:?}",
-                rendered.actions
-            );
-        }
-    }
-
     /// M3: every enabled key's hit area starts where its `key label` text is drawn.
     #[test]
     fn action_hit_areas_sit_on_their_drawn_labels() {
-        let mut menu = reset_menu(Some(usage_with_grant(Some("g2"))));
+        let mut menu = reset_menu(None);
         let (terminal, rendered) = render_menu(&mut menu);
 
         for (key, label) in [
@@ -726,7 +648,6 @@ mod tests {
             ('l', "login"),
             ('n', "rename"),
             ('d', "delete"),
-            ('c', "reset"),
         ] {
             let text = format!("{key} {label}");
             let (x, y) = column_of(terminal.backend(), &text)
@@ -828,8 +749,8 @@ mod tests {
             alias: "account".into(),
             email: Some("account@example.com".into()),
             account_id: Some("account-id".into()),
-            plan_label: "Max".into(),
-            plan_type: Some("max".into()),
+            plan_label: "g1-pro-tier".into(),
+            plan_type: Some("g1-pro-tier".into()),
             is_current: true,
             auth_expiries: vec!["Access token · expires soon".into()],
             usage: Some(Box::new(usage)),

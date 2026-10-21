@@ -1,4 +1,4 @@
-//! Configuration boundary checks retained after replacing Claude CLI contracts.
+//! Configuration boundary checks retained after migrating the CLI.
 use std::{fs, process::Command};
 use serde_json::Value;
 

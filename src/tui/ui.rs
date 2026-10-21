@@ -14,11 +14,10 @@ use super::popup;
 use super::theme::{
     BG, C_BLUE, C_CYAN, C_GRAY, C_GREEN, C_MAGENTA, C_RED, C_WHITE, C_YELLOW, DIM, base, highlight,
 };
-use crate::claude_usage::PlanKind;
 use crate::output::{
-    format_local_time, format_reset_short, format_reset_time,
+    format_local_time, format_reset_time,
 };
-use crate::usage::{UsageInfo, is_available};
+use crate::usage::UsageInfo;
 
 fn status_message_color(is_error: bool) -> Color {
     if is_error { C_RED } else { C_CYAN }
@@ -232,9 +231,9 @@ fn render_help_popup(
         for (cmd, what) in [
             ("list", "usage of every account, numbered"),
             ("use [n|alias]", "switch to the best account, or to number n / alias"),
-            ("login [alias]", "save the current Claude Code login as an account"),
+            ("login [alias]", "save the current agy login as an account"),
             ("auto", "switch automatically near the limit; stop with Ctrl+C or close the window"),
-            ("launch [alias]", "switch to the account, then start Claude Code"),
+            ("launch [alias]", "switch to the account, then start agy"),
             ("delete / restore", "remove an account / bring a deleted one back"),
             ("self-update", "update to the newest version"),
             ("uninstall", "remove the program (asks before deleting your data)"),
@@ -309,457 +308,89 @@ fn table_text_widths(
 }
 
 fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
+    let mut title = format!(" Accounts ({}) sort:{} ", app.accounts.len(), app.sort_mode.as_str());
+    if let Some(search) = &app.search { title.push_str(&format!(" /{} ", search.query)); }
+    if app.loading_count() > 0 { title.push_str(&format!("fetching {}... ", app.loading_count())); }
+    if let Some(seconds) = app.auto_refresh_remaining_secs() {
+        title.push_str(&format!("auto:{} ", format_auto_refresh_remaining(seconds)));
+    }
+    let block = Block::default().title(title).borders(Borders::ALL)
+        .border_style(base().fg(C_BLUE)).style(base());
     if app.accounts.is_empty() {
-        let block = Block::default()
-            .title(" paper-agy-switch ")
-            .borders(Borders::ALL)
-            .border_style(base().fg(C_BLUE))
-            .style(base());
-        let hint = Paragraph::new(Line::from(vec![
-            Span::styled("No accounts yet. Press ", base().fg(DIM)),
-            Span::styled("a", base().fg(C_YELLOW).add_modifier(Modifier::BOLD)),
-            Span::styled(" to add one, or ", base().fg(DIM)),
-            Span::styled("q", base().fg(C_YELLOW).add_modifier(Modifier::BOLD)),
-            Span::styled(" to quit.", base().fg(DIM)),
-        ]))
-        .block(block)
-        .alignment(ratatui::layout::Alignment::Center);
-        f.render_widget(hint, area);
+        f.render_widget(Paragraph::new("No accounts yet. Press a to save an agy login, or q to quit.")
+            .block(block).style(base()), area);
         return;
     }
-
-    let show_5h = app
-        .accounts
-        .iter()
-        .any(|entry| matches!(&entry.usage, UsageStatus::Loaded(usage) if usage.primary.is_some()));
-    // The Resets column appears once any account reports reset grants or state.
-    let show_reset = app.accounts.iter().any(|entry| {
-        matches!(&entry.usage, UsageStatus::Loaded(usage)
-            if usage.session_reset.is_some() || usage.reset_grants.is_some())
-    });
-    let hdr = base().fg(C_CYAN).add_modifier(Modifier::BOLD);
-    let mut header_cells = vec![
-        Cell::from(" ").style(base().fg(DIM)),
-        Cell::from("Alias").style(hdr),
-        Cell::from("Email").style(hdr),
-        Cell::from("Plan").style(hdr),
-        Cell::from("Status").style(hdr),
-    ];
-    if show_5h {
-        header_cells.push(Cell::from("5h").style(hdr));
-    }
-    header_cells.push(Cell::from("7d").style(hdr));
-    if show_5h {
-        header_cells.push(Cell::from("5h Reset").style(hdr));
-    }
-    header_cells.push(Cell::from("7d Reset").style(hdr));
-    if show_reset {
-        header_cells.push(Cell::from("Resets").style(hdr));
-    }
-    header_cells.push(Cell::from("Plan until").style(hdr));
-
-    let header = Row::new(header_cells).height(1);
-
-    let mut rows: Vec<Row> = Vec::new();
-    let mut cards: Vec<Vec<Line<'static>>> = Vec::new();
-    let mut render_selected: usize = 0;
-    for (view_i, &acc_i) in app.view_indices.iter().enumerate() {
-        let entry = &app.accounts[acc_i];
-        let main_row = {
-            let is_marked = app.marked.contains(&entry.alias);
-            let marker = if is_marked {
-                ">"
-            } else if entry.is_current {
-                "*"
-            } else {
-                " "
-            };
-            let marker_style = if is_marked {
-                base().fg(C_YELLOW).add_modifier(Modifier::BOLD)
-            } else if entry.is_current {
-                base().fg(C_GREEN).add_modifier(Modifier::BOLD)
-            } else {
-                base()
-            };
-
-            let is_selected = view_i == app.selected;
-            let row_style = if is_selected {
-                base().fg(C_WHITE).add_modifier(Modifier::BOLD)
-            } else {
-                base().fg(C_GRAY)
-            };
-
-            let email = entry.info.email.as_deref().unwrap_or("--").to_string();
-            let api_plan = if let UsageStatus::Loaded(u) = &entry.usage {
-                u.plan_type.as_deref()
-            } else {
-                None
-            };
-            let effective_plan = api_plan.or(entry.info.plan_type.as_deref());
-            let plan_label = entry.info.plan_label_with(effective_plan);
-            let plan_style = plan_color(effective_plan, is_selected);
-
-            let now = crate::auth::now_unix_secs();
-
-            let (
-                status_text,
-                status_color,
-                pct_5h,
-                pct_7d,
-                reset_5h,
-                reset_5h_color,
-                reset_7d,
-                reset_7d_color,
-            ): (
-                String,
-                Color,
-                String,
-                String,
-                String,
-                Color,
-                String,
-                Color,
-            ) = match &entry.usage {
-                UsageStatus::Idle => (
-                    "--".into(),
-                    DIM,
-                    "--".into(),
-                    "--".into(),
-                    "--".into(),
-                    DIM,
-                    "--".into(),
-                    DIM,
-                ),
-                UsageStatus::Loading => (
-                    "...".into(),
-                    C_YELLOW,
-                    "...".into(),
-                    "...".into(),
-                    "loading".into(),
-                    DIM,
-                    "loading".into(),
-                    DIM,
-                ),
-                UsageStatus::Error(_) => (
-                    "Error".into(),
-                    C_RED,
-                    "Err".into(),
-                    "Err".into(),
-                    "--".into(),
-                    DIM,
-                    "--".into(),
-                    DIM,
-                ),
-                UsageStatus::Loaded(u) => {
-                    let refreshing = app.is_refreshing(&entry.alias);
-                    let over_5h = u.primary.as_ref().is_some_and(|w| {
-                        let used = w.used_percent.unwrap_or(0.0);
-                        // Suppress pace warning when usage is negligible — a fresh window
-                        // always shows used > pace near t=0, which is noise not a real warning.
-                        used >= 10.0
-                            && crate::usage::visible_pace_percent(w, crate::usage::WINDOW_5H_SECS)
-                                .is_some_and(|pace| used > pace)
-                    });
-                    let over_7d = u.secondary.as_ref().is_some_and(|w| {
-                        let used = w.used_percent.unwrap_or(0.0);
-                        used >= 10.0
-                            && crate::usage::visible_pace_percent(w, crate::usage::WINDOW_7D_SECS)
-                                .is_some_and(|pace| used > pace)
-                    });
-                    let p5 = u
-                        .primary
-                        .as_ref()
-                        .and_then(|w| w.used_percent)
-                        .map(|p| {
-                            let s = format!("{:.0}%", p.clamp(0.0, 100.0));
-                            if over_5h { format!("{s}!") } else { s }
-                        })
-                        .unwrap_or_else(|| "--".into());
-                    let p7 = u
-                        .secondary
-                        .as_ref()
-                        .and_then(|w| w.used_percent)
-                        .map(|p| {
-                            let s = format!("{:.0}%", p.clamp(0.0, 100.0));
-                            if over_7d { format!("{s}!") } else { s }
-                        })
-                        .unwrap_or_else(|| "--".into());
-                    let r5_ts = u.primary.as_ref().and_then(|w| w.resets_at);
-                    let r5 = r5_ts.map(format_reset_short).unwrap_or_else(|| "--".into());
-                    let r5c = r5_ts.map(|ts| reset_color(ts - now)).unwrap_or(DIM);
-                    let r7_ts = u.secondary.as_ref().and_then(|w| w.resets_at);
-                    let r7 = r7_ts.map(format_reset_short).unwrap_or_else(|| "--".into());
-                    let r7c = r7_ts.map(|ts| reset_color(ts - now)).unwrap_or(DIM);
-                    if refreshing {
-                        (
-                            "Refresh".into(),
-                            C_YELLOW,
-                            p5,
-                            p7,
-                            r5,
-                            r5c,
-                            r7,
-                            r7c,
-                        )
-                    } else if is_available(u) {
-                        (
-                            "OK".into(),
-                            C_GREEN,
-                            p5,
-                            p7,
-                            r5,
-                            r5c,
-                            r7,
-                            r7c,
-                        )
-                    } else {
-                        (
-                            "Limited".into(),
-                            C_RED,
-                            p5,
-                            p7,
-                            r5,
-                            r5c,
-                            r7,
-                            r7c,
-                        )
-                    }
-                }
-            };
-
-            // A reading older than the cache would keep shows its age.
-            let status_text = match &entry.usage {
-                UsageStatus::Loaded(u) => match crate::claude_usage::stale_age_label(u.fetched_at, now) {
-                    Some(age) => format!("{status_text} {}", age.trim_end_matches(" ago")),
-                    None => status_text,
-                },
-                _ => status_text,
-            };
-            let subscription_status = match &entry.usage {
-                UsageStatus::Loaded(u) => u.subscription_status.as_deref(),
-                _ => None,
-            };
-            let (until_text, until_level) = crate::claude_usage::plan_until_label(
-                entry.info.subscription_until,
-                now,
-                subscription_status,
-                entry.info.plan_type.as_deref(),
-            );
-            let (card_until, card_until_level) = (until_text.clone(), until_level);
-            let (card_resets, card_resets_ready) = match &entry.usage {
-                UsageStatus::Loaded(u) => crate::claude_usage::resets_label(u.reset_grants.as_deref(), u.session_reset.as_ref()),
-                _ => ("--".into(), false),
-            };
-            let card_resets_color = if card_resets_ready { C_GREEN } else { DIM };
-            let dim = base().fg(DIM);
-            cards.push(vec![
-                Line::from(vec![
-                    Span::styled(format!("{marker} "), marker_style),
-                    Span::styled(format!("{}. {}", view_i + 1, entry.alias), row_style),
-                    Span::raw("  "),
-                    Span::styled(format!("[{plan_label}]"), plan_style),
-                ]),
-                Line::from(Span::styled(format!("  {email}"), dim)),
-                Line::from(vec![
-                    Span::styled("  5h ", dim),
-                    Span::styled(format!("{pct_5h} used"), usage_pct_style(&pct_5h, is_selected)),
-                    Span::styled(format!("  resets {reset_5h}"), base().fg(reset_5h_color)),
-                ]),
-                Line::from(vec![
-                    Span::styled("  7d ", dim),
-                    Span::styled(format!("{pct_7d} used"), usage_pct_style(&pct_7d, is_selected)),
-                    Span::styled(format!("  resets {reset_7d}"), base().fg(reset_7d_color)),
-                ]),
-                Line::from(vec![
-                    Span::styled(format!("  {status_text}"), base().fg(status_color)),
-                    Span::styled(
-                        format!("  until {card_until}"),
-                        base().fg(match card_until_level {
-                            crate::claude_usage::ExpiryLevel::Soon => C_YELLOW,
-                            crate::claude_usage::ExpiryLevel::Bad => C_RED,
-                            _ => DIM,
-                        }),
-                    ),
-                    Span::styled(format!("  resets {card_resets}"), base().fg(card_resets_color)),
-                ]),
-                Line::from(""),
-            ]);
-
-            let mut cells = vec![
-                Cell::from(Span::styled(marker, marker_style)),
-                Cell::from(entry.alias.clone()).style(row_style),
-                Cell::from(email).style(row_style),
-                Cell::from(plan_label).style(plan_style),
-                Cell::from(status_text).style(base().fg(status_color).add_modifier(
-                    if is_selected {
-                        Modifier::BOLD
-                    } else {
-                        Modifier::empty()
-                    },
-                )),
-            ];
-            if show_5h {
-                cells.push(Cell::from(pct_5h.clone()).style(usage_pct_style(&pct_5h, is_selected)));
+    let aliases: Vec<_> = app.view_indices.iter().map(|&i| app.accounts[i].alias.as_str()).collect();
+    let emails: Vec<_> = app.view_indices.iter().map(|&i| app.accounts[i].info.email.as_deref().unwrap_or("--")).collect();
+    let tiers: Vec<_> = app.view_indices.iter().map(|&i| match &app.accounts[i].usage {
+        UsageStatus::Loaded(value) => value.plan_type.as_deref().unwrap_or("--"),
+        _ => "--",
+    }).collect();
+    let widths = table_text_widths(area.width.saturating_sub(50), &aliases, &emails, &tiers, true);
+    let mut rows = Vec::new();
+    let mut cards = Vec::new();
+    for (view, &index) in app.view_indices.iter().enumerate() {
+        let entry = &app.accounts[index];
+        let marker = if app.marked.contains(&entry.alias) { ">" } else if entry.is_current { "*" } else { " " };
+        let selected = view == app.selected;
+        let style = if entry.is_current { base().fg(C_GREEN) } else { base() };
+        let (windows, status) = match &entry.usage {
+            UsageStatus::Loaded(value) => {
+                let gemini = crate::usage::gemini_pool(value);
+                ([value.primary.as_ref(), value.secondary.as_ref(),
+                    gemini.and_then(|p| p.primary.as_ref()), gemini.and_then(|p| p.secondary.as_ref())],
+                    if app.is_refreshing(&entry.alias) { "refreshing" } else { "OK" }.to_owned())
             }
-            cells.push(Cell::from(pct_7d.clone()).style(usage_pct_style(&pct_7d, is_selected)));
-            if show_5h {
-                cells.push(Cell::from(reset_5h).style(base().fg(reset_5h_color)));
-            }
-            cells.push(Cell::from(reset_7d).style(base().fg(reset_7d_color)));
-            if show_reset {
-                let (text, ready) = match &entry.usage {
-                    UsageStatus::Loaded(u) => {
-                        crate::claude_usage::resets_label(u.reset_grants.as_deref(), u.session_reset.as_ref())
-                    }
-                    _ => ("--".into(), false),
-                };
-                let color = if ready { C_GREEN } else { DIM };
-                cells.push(Cell::from(text).style(base().fg(color)));
-            }
-            let until_color = match until_level {
-                crate::claude_usage::ExpiryLevel::Soon => C_YELLOW,
-                crate::claude_usage::ExpiryLevel::Bad => C_RED,
-                crate::claude_usage::ExpiryLevel::Ok => C_GRAY,
-                _ => DIM,
-            };
-            cells.push(Cell::from(until_text).style(base().fg(until_color)));
-        
-            Row::new(cells).height(1)
+            UsageStatus::Error(error) => ([None; 4], error.summary.clone()),
+            UsageStatus::Loading => ([None; 4], "loading...".to_owned()),
+            UsageStatus::Idle => ([None; 4], "--".to_owned()),
         };
-
-        if view_i == app.selected {
-            render_selected = rows.len();
+        let quota: Vec<_> = windows.iter().map(|window| crate::usage::window_text(*window)).collect();
+        let status_style = if matches!(entry.usage, UsageStatus::Error(_)) { base().fg(C_RED) } else { base().fg(DIM) };
+        let mut cells = vec![Cell::from(marker).style(style), Cell::from(entry.alias.clone()),
+            Cell::from(emails[view]), Cell::from(tiers[view]).style(plan_color(Some(tiers[view]), selected))];
+        for (window, text) in windows.iter().zip(&quota) {
+            let percent = window.and_then(|w| w.used_percent).map(|p| format!("{p:.0}%")).unwrap_or_default();
+            cells.push(Cell::from(text.clone()).style(usage_pct_style(&percent, selected)));
         }
-        rows.push(main_row);
+        cells.push(Cell::from(status.clone()).style(status_style));
+        rows.push(Row::new(cells).style(style));
+        cards.push(vec![
+            Line::from(Span::styled(format!("{marker} {}. {} [{}]", view + 1, entry.alias, tiers[view]), style)),
+            Line::from(format!("  {}", emails[view])),
+            Line::from(format!("  Claude/GPT 5h {}", quota[0])),
+            Line::from(format!("             7d {}", quota[1])),
+            Line::from(format!("  Gemini 5h {}", quota[2])),
+            Line::from(format!("         7d {}", quota[3])),
+            Line::from(Span::styled(format!("  {status}"), status_style)),
+            Line::from(""),
+        ]);
     }
-
-    let loading_count = app.loading_count();
-    let mut title = if let Some(s) = &app.search {
-        format!(
-            " Accounts ({}/{}) [/{s}]",
-            app.view_indices.len(),
-            app.accounts.len(),
-            s = s.query
-        )
-    } else {
-        format!(" Accounts ({})", app.accounts.len())
-    };
-    if loading_count > 0 {
-        title.push_str(&format!(" -- fetching {}...", loading_count));
-    }
-    if !app.marked.is_empty() {
-        title.push_str(&format!(" [{} marked]", app.marked.len()));
-    }
-    if let Some(secs) = app.auto_refresh_remaining_secs() {
-        title.push_str(&format!(" auto:{}", format_auto_refresh_remaining(secs)));
-    }
-    title.push_str(&format!(" sort:{} ", app.sort_mode.as_str()));
-
-    let mut table_state = TableState::default().with_selected(render_selected);
-
-    let aliases: Vec<&str> = app
-        .view_indices
-        .iter()
-        .map(|&idx| app.accounts[idx].alias.as_str())
-        .collect();
-    let emails: Vec<&str> = app
-        .view_indices
-        .iter()
-        .map(|&idx| app.accounts[idx].info.email.as_deref().unwrap_or("--"))
-        .collect();
-    let plan_labels: Vec<String> = app
-        .view_indices
-        .iter()
-        .map(|&idx| {
-            let entry = &app.accounts[idx];
-            let api_plan = match &entry.usage {
-                UsageStatus::Loaded(u) => u.plan_type.as_deref(),
-                _ => None,
-            };
-            entry
-                .info
-                .plan_label_with(api_plan.or(entry.info.plan_type.as_deref()))
-        })
-        .collect();
-    let plans: Vec<&str> = plan_labels.iter().map(String::as_str).collect();
-    let text_widths = table_text_widths(
-        area.width,
-        &aliases,
-        &emails,
-        &plans,
-        show_5h,
-    );
-
-    let mut constraints = vec![
-        Constraint::Length(2),                 // marker
-        Constraint::Length(text_widths.alias), // alias
-        Constraint::Length(text_widths.email), // email
-        Constraint::Length(text_widths.plan),  // plan
-        Constraint::Length(10),                // status (+ age of an old reading)
-    ];
-    if show_5h {
-        constraints.push(Constraint::Length(6)); // 5h %
-    }
-    constraints.push(Constraint::Length(6)); // 7d %
-    if show_5h {
-        constraints.push(Constraint::Length(12)); // 5h reset
-    }
-    constraints.push(Constraint::Length(12)); // 7d reset
-    if show_reset {
-        constraints.push(Constraint::Length(16)); // session-limit reset ("next 10-12 09:00")
-    }
-    constraints.push(Constraint::Length(16)); // plan until ("ends ~10-20")
-
-
-    let natural: u16 = constraints
-        .iter()
-        .map(|c| match c {
-            Constraint::Length(n) => *n,
-            _ => 0,
-        })
-        .sum::<u16>()
-        .saturating_add(constraints.len().saturating_sub(1) as u16)
-        .saturating_add(2);
+    let constraints = [Constraint::Length(1), Constraint::Length(widths.alias),
+        Constraint::Length(widths.email), Constraint::Length(widths.plan),
+        Constraint::Length(22), Constraint::Length(22), Constraint::Length(22), Constraint::Length(22),
+        Constraint::Min(16)];
+    let natural = widths.alias + widths.email + widths.plan + 115;
     if natural > area.width {
-        // Too narrow for the table: one block per account, stacked, like `list`.
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(base().fg(C_BLUE))
-            .style(base());
         let inner = block.inner(area);
         f.render_widget(block, area);
-        let per_card = cards.first().map_or(6, Vec::len);
-        let visible = usize::from(inner.height) / per_card.max(1);
-        let first = if visible > 0 && render_selected >= visible {
-            render_selected + 1 - visible
-        } else {
-            0
-        };
-        let lines: Vec<Line<'static>> = cards.into_iter().skip(first).flatten().collect();
+        // Keep the selected account visible when the terminal uses stacked cards.
+        let visible = (usize::from(inner.height) / 8).max(1);
+        let first = app.selected.saturating_sub(visible - 1);
+        let lines: Vec<_> = cards.into_iter().skip(first).flatten().collect();
         f.render_widget(Paragraph::new(lines).style(base()), inner);
         app.hitmap.account_list = None;
-        return;
+    } else {
+        let header = Row::new(["", "Alias", "Email", "Tier", "Claude/GPT 5h", "Claude/GPT weekly", "Gemini 5h", "Gemini weekly", "Status / error"])
+            .style(base().fg(C_CYAN).add_modifier(Modifier::BOLD));
+        let mut state = TableState::default().with_selected(app.selected);
+        f.render_stateful_widget(Table::new(rows, constraints).header(header).block(block)
+            .row_highlight_style(highlight()).style(base()), area, &mut state);
+        app.hitmap.account_list = Some(super::hitmap::ListHit {
+            rows_area: super::hitmap::table_rows_area(area), offset: state.offset(), row_count: app.view_indices.len(),
+        });
     }
-
-    let table = Table::new(rows, constraints)
-        .header(header)
-        .block(
-            Block::default()
-                .title(title)
-                .borders(Borders::ALL)
-                .border_style(base().fg(C_BLUE))
-                .style(base()),
-        )
-        .row_highlight_style(highlight())
-        .style(base());
-
-    f.render_stateful_widget(table, area, &mut table_state);
-    app.hitmap.account_list = Some(super::hitmap::ListHit {
-        rows_area: super::hitmap::table_rows_area(area),
-        offset: table_state.offset(),
-        row_count: app.view_indices.len(),
-    });
 }
 
 fn usage_gauges_height(usage: &UsageInfo) -> u16 {
@@ -932,7 +563,7 @@ pub(super) fn render_usage_gauges(f: &mut Frame, u: &UsageInfo, area: Rect) {
         }
     };
 
-    render_pool(f, "Main", u.primary.as_ref(), u.secondary.as_ref(), false);
+    render_pool(f, "Claude and GPT models", u.primary.as_ref(), u.secondary.as_ref(), false);
     for pool in &u.additional_limits {
         render_pool(
             f,
@@ -1173,21 +804,6 @@ fn render_status_bar(f: &mut Frame, app: &mut App, area: Rect) {
             }
             super::app::ConfirmAction::BatchDelete(aliases) => {
                 format!("Delete {} marked profile(s)? (y/n)", aliases.len())
-            }
-            super::app::ConfirmAction::UseReset { alias, label, resets_left, ends_at } => {
-                let until = ends_at
-                    .as_deref()
-                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-                    .map(|at| {
-                        format!(
-                            " · until {}",
-                            at.with_timezone(&chrono::Local).format("%m-%d")
-                        )
-                    })
-                    .unwrap_or_default();
-                format!(
-                    "Use a reset for '{alias}'? {label} · {resets_left} left{until} (y/n)"
-                )
             }
 
         };
@@ -1659,23 +1275,15 @@ fn remaining_color(remaining_pct: f64) -> Color {
 }
 
 fn plan_color(plan: Option<&str>, is_selected: bool) -> Style {
-    let kind = PlanKind::from_wire(plan);
-    let fg = match kind {
-        PlanKind::Free | PlanKind::Unknown => C_GRAY,
-        PlanKind::Go => C_BLUE,
-        PlanKind::Plus => C_CYAN,
-        PlanKind::ProLite | PlanKind::Pro => C_YELLOW,
-        PlanKind::Team | PlanKind::Business | PlanKind::Enterprise | PlanKind::Edu => C_MAGENTA,
+    let color = match plan {
+        Some("g1-pro-tier") => C_YELLOW,
+        Some("g1-ultra-tier") => C_MAGENTA,
+        _ => C_GRAY,
     };
-    let s = base().fg(fg);
-    if is_selected || matches!(kind, PlanKind::Pro | PlanKind::Enterprise) {
-        s.add_modifier(Modifier::BOLD)
-    } else {
-        s
-    }
+    let style = base().fg(color);
+    if is_selected { style.add_modifier(Modifier::BOLD) } else { style }
 }
 
-/// Color for reset countdown: green = soon (< 1h), yellow = medium (< 4h), red = far (>= 4h)
 fn reset_color(remaining_secs: i64) -> Color {
     if remaining_secs < 3600 {
         C_GREEN
@@ -1712,14 +1320,14 @@ fn short_label(label: &str) -> &str {
     match label {
         "move selection" => "nav",
         "search" => "search",
-        "open selected account actions" => "menu",
+        "use (switch to) selected account" => "use",
         "add new account" => "add",
         "refresh visible accounts" => "refresh",
         "show / hide account detail panel" => "detail",
         "use (switch to)" => "use",
         "show this help (main view)" => "help",
         "quit (main view)" => "quit",
-        "launch Claude Code" => "launch",
+        "launch agy" => "launch",
         other => other,
     }
 }
@@ -1758,10 +1366,9 @@ fn status_bar_height(app: &App, width: u16) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::claude_usage::AccountInfo;
+    use crate::usage::AccountInfo;
     use crate::tui::app::{AccountEntry, App, Tab, UsageStatus};
     use crate::usage::{AdditionalRateLimit, UsageInfo, WindowUsage};
-    use ratatui::style::Modifier;
     use ratatui::{Terminal, backend::TestBackend, layout::Rect};
     use std::io::Write;
     use tracing_subscriber::fmt::MakeWriter;
@@ -1974,30 +1581,10 @@ mod tests {
     }
 
     #[test]
-    fn plan_color_uses_semantic_plan_families() {
-        assert_eq!(plan_color(Some("go"), false).fg, Some(C_BLUE));
-        assert_eq!(plan_color(Some("plus"), false).fg, Some(C_CYAN));
-        assert_eq!(plan_color(Some("prolite"), false).fg, Some(C_YELLOW));
-        let pro = plan_color(Some("pro"), false);
-        assert_eq!(pro.fg, Some(C_YELLOW));
-        assert!(pro.add_modifier.contains(Modifier::BOLD));
-        assert_eq!(plan_color(Some("team"), false).fg, Some(C_MAGENTA));
-        assert_eq!(plan_color(Some("business"), false).fg, Some(C_MAGENTA));
-        assert_eq!(plan_color(Some("future_plan"), false).fg, Some(C_GRAY));
-    }
-
-    #[test]
-    fn account_table_columns_expand_to_fit_names_when_space_is_available() {
-        let widths = table_text_widths(
-            180,
-            &["oai001_20x", "a-very-long-account-alias"],
-            &["oai001@ozi.xyz"],
-            &["Pro 20×", "Team - NightCity Workspace"],
-            true,
-        );
-
-        assert!(widths.alias >= "a-very-long-account-alias".chars().count() as u16);
-        assert!(widths.plan >= "Team - NightCity Workspace".chars().count() as u16);
+    fn plan_color_uses_antigravity_tiers() {
+        assert_eq!(plan_color(Some("g1-pro-tier"), false).fg, Some(C_YELLOW));
+        assert_eq!(plan_color(Some("g1-ultra-tier"), false).fg, Some(C_MAGENTA));
+        assert_eq!(plan_color(Some("future-tier"), false).fg, Some(C_GRAY));
     }
 
     #[test]
@@ -2067,32 +1654,27 @@ mod tests {
     }
 
     #[test]
-    fn narrow_card_shows_the_resets_left() {
+    fn accounts_show_both_quota_groups_and_row_errors() {
         let mut app = App::new();
-        let usage = UsageInfo {
-            session_reset: Some(crate::claude_api::SessionReset {
-                eligible: false,
-                ineligible_reason: Some("not_at_wall".into()),
-                available: false,
-                next_available_at: None,
-                resets_per_week: 1,
-                billing_period: None,
-            }),
-            ..UsageInfo::default()
-        };
+        let window = |used| crate::usage::WindowUsage { used_percent: Some(used), resets_at: Some(crate::auth::now_unix_secs() + 3600), window_minutes: Some(300) };
         app.accounts.push(AccountEntry {
-            alias: "solo".into(),
-            info: AccountInfo { email: Some("solo@x.com".into()), ..AccountInfo::default() },
-            usage: UsageStatus::Loaded(Box::new(usage)),
-            is_current: true,
+            alias: "saved".into(), info: AccountInfo { email: Some("saved@example.com".into()), ..Default::default() },
+            usage: UsageStatus::Loaded(Box::new(UsageInfo {
+                primary: Some(window(12.0)), secondary: Some(window(34.0)), plan_type: Some("g1-pro-tier".into()),
+                additional_limits: vec![crate::usage::AdditionalRateLimit { limit_name: Some("Gemini".into()), primary: Some(window(56.0)), secondary: Some(window(78.0)), ..Default::default() }],
+                ..Default::default()
+            })), is_current: true,
         });
-        app.view_indices.push(0);
-        let backend = TestBackend::new(50, 12);
-        let mut terminal = Terminal::new(backend).unwrap();
+        app.accounts.push(AccountEntry {
+            alias: "expired".into(), info: AccountInfo::default(),
+            usage: UsageStatus::Error(crate::usage::UsageError { summary: "sign-in expired".into(), detail: "sign-in expired".into() }), is_current: false,
+        });
+        app.view_indices = vec![0, 1];
+        let mut terminal = Terminal::new(TestBackend::new(220, 16)).unwrap();
         terminal.draw(|frame| render_account_table(frame, &mut app, frame.area())).unwrap();
-        let text = (0..12).map(|y| row_text(terminal.backend(), y)).collect::<Vec<_>>().join("\n");
-        assert!(text.contains("resets 1"), "{text}");
+        let text = (0..16).map(|y| row_text(terminal.backend(), y)).collect::<Vec<_>>().join("\n");
+        for expected in ["saved@example.com", "g1-pro-tier", "Claude/GPT", "Gemini", "12%", "34%", "56%", "78%", "resets", "sign-in expired"] {
+            assert!(text.contains(expected), "missing {expected}: {text}");
+        }
     }
-
-
 }

@@ -16,20 +16,8 @@ pub(crate) fn user_agent() -> String {
     )
 }
 
-/// The user's Claude config directory (`$CLAUDE_CONFIG_DIR`, or `~/.claude`).
-/// It belongs to Claude Code, so this app never changes its permissions.
-#[cfg(windows)]
-fn claude_config_home() -> Result<PathBuf> {
-    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(dir));
-    }
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
-    Ok(home.join(".claude"))
-}
-
 /// ~/.paper-agy-switch/
 pub fn app_home() -> Result<PathBuf> {
-    // Keep application state relocatable without changing Claude's own home.
     if let Some(path) = std::env::var_os("PAPER_AGY_SWITCH_HOME").filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(path));
     }
@@ -61,37 +49,20 @@ pub fn read_auth(path: &Path) -> Result<serde_json::Value> {
 }
 
 pub(crate) fn atomic_write_private(path: &Path, contents: &[u8]) -> Result<()> {
-    #[cfg(windows)]
-    {
-        let shared_home = claude_config_home().ok();
-        let owned_home = app_home().ok();
-        atomic_write_private_inner(
-            path,
-            contents,
-            shared_home.as_deref(),
-            owned_home.as_deref(),
-        )
-    }
-    #[cfg(not(windows))]
     atomic_write_private_inner(path, contents)
 }
 
 fn atomic_write_private_inner(
     path: &Path,
     contents: &[u8],
-    #[cfg(windows)] shared_home: Option<&Path>,
-    #[cfg(windows)] owned_home: Option<&Path>,
 ) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("path has no parent: {}", path.display()))?;
-    #[cfg(windows)]
-    let harden_parent =
-        { should_harden_windows_parent(parent, shared_home, owned_home, parent.is_dir()) };
     std::fs::create_dir_all(parent)
         .with_context(|| format!("creating directory {}", parent.display()))?;
     #[cfg(windows)]
-    if harden_parent {
+    {
         harden_windows_acl(parent, true)?;
     }
     #[cfg(unix)]
@@ -134,39 +105,6 @@ fn windows_private_acl_sddl(current_user_sid: &str, directory: bool) -> String {
          (A;{inheritance};FA;;;S-1-5-18)\
          (A;{inheritance};FA;;;S-1-5-32-544)"
     )
-}
-
-#[cfg(windows)]
-fn should_harden_windows_parent(
-    parent: &Path,
-    claude_home: Option<&Path>,
-    owned_app_home: Option<&Path>,
-    existed_before_write: bool,
-) -> bool {
-    if !existed_before_write || !parent.is_dir() {
-        return true;
-    }
-
-    // Leave Claude Code's own config directory alone only when all three
-    // existing paths resolve. Canonical paths avoid treating a sibling such as
-    // `paper-agy-switch-old` as a descendant of `paper-agy-switch`;
-    // resolution errors fail closed and retain directory hardening.
-    let (Some(shared), Some(owned)) = (claude_home, owned_app_home) else {
-        return true;
-    };
-    let (Ok(parent_real), Ok(shared_real), Ok(owned_real)) = (
-        parent.canonicalize(),
-        shared.canonicalize(),
-        owned.canonicalize(),
-    ) else {
-        return true;
-    };
-
-    // App-owned paths take precedence over the shared-home exception.
-    if parent_real != shared_real {
-        return true;
-    }
-    parent_real.starts_with(owned_real)
 }
 
 #[cfg(windows)]
@@ -655,7 +593,7 @@ pub(crate) fn build_http_client_with_proxy_and_redirect_policy(
 }
 
 /// The first non-empty CA bundle path, in priority order: this tool's own
-/// variable, then the one Claude Code reads, then the OpenSSL convention.
+/// variable, then the Node convention, then the OpenSSL convention.
 fn custom_ca_path_from_values(values: [Option<OsString>; 3]) -> Option<PathBuf> {
     values
         .into_iter()
@@ -752,7 +690,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("credentials.json");
 
-        atomic_write_private(&path, br#"{"claudeAiOauth":{}}"#).unwrap();
+        atomic_write_private(&path, br#"{"token":{}}"#).unwrap();
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
@@ -828,67 +766,6 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn claude_home_acl_is_left_alone_but_owned_parent_is_hardened() {
-        let root = tempfile::tempdir().unwrap();
-        let shared = root.path().join(".claude");
-        let owned = root.path().join("paper-agy-switch");
-        let sibling = root.path().join("paper-agy-switch-old");
-        std::fs::create_dir(&shared).unwrap();
-        std::fs::create_dir(&sibling).unwrap();
-        std::fs::create_dir_all(owned.join("profiles").join("one")).unwrap();
-
-        assert!(!super::should_harden_windows_parent(
-            &shared,
-            Some(&shared),
-            Some(&owned),
-            true
-        ));
-        assert!(super::should_harden_windows_parent(
-            &owned.join("profiles").join("one"),
-            Some(&owned.join("profiles").join("one")),
-            Some(&owned),
-            true
-        ));
-        let owned_alias = owned
-            .join("profiles")
-            .join("..")
-            .join("profiles")
-            .join("one");
-        assert!(super::should_harden_windows_parent(
-            &owned_alias,
-            Some(&owned_alias),
-            Some(&owned),
-            true
-        ));
-        let sibling_alias = owned.join("..").join("paper-agy-switch-old");
-        assert!(!super::should_harden_windows_parent(
-            &sibling_alias,
-            Some(&sibling_alias),
-            Some(&owned),
-            true
-        ));
-        assert!(super::should_harden_windows_parent(
-            &shared,
-            Some(&shared),
-            Some(&shared),
-            true
-        ));
-        assert!(super::should_harden_windows_parent(
-            &root.path().join("missing"),
-            Some(&root.path().join("missing")),
-            Some(&owned),
-            false
-        ));
-        assert!(super::should_harden_windows_parent(
-            &shared,
-            Some(&shared),
-            Some(&root.path().join("missing-owned")),
-            true
-        ));
-    }
-
-    #[cfg(windows)]
-    #[test]
     fn protected_temp_is_private_before_first_write_and_failed_create_writes_nothing() {
         use std::os::windows::ffi::OsStrExt;
 
@@ -944,8 +821,6 @@ mod tests {
             .unwrap();
         assert!(status.success(), "failed to seed an extra parent ACE");
         let parent_acl_before = acl_bytes(dir.path());
-        let owned_home = dir.path().join("paper-agy-switch");
-        std::fs::create_dir(&owned_home).unwrap();
         let temp = super::create_private_windows_temp(dir.path()).unwrap();
         assert_eq!(
             acl_bytes(dir.path()),
@@ -984,15 +859,14 @@ mod tests {
         super::atomic_write_private_inner(
             &shared_path,
             b"first-secret",
-            Some(dir.path()),
-            Some(&owned_home),
         )
         .unwrap();
-        assert_eq!(
+        assert_ne!(
             acl_bytes(dir.path()),
             parent_acl_before,
-            "writing shared auth must not rewrite the shared parent DACL"
+            "credential writes must harden the parent DACL"
         );
+        let parent_acl_secured = acl_bytes(dir.path());
         let shared_wide = shared_path
             .as_os_str()
             .encode_wide()
@@ -1002,11 +876,10 @@ mod tests {
         super::atomic_write_private_inner(
             &shared_path,
             b"replacement-secret",
-            Some(dir.path()),
-            Some(&owned_home),
         )
         .unwrap();
         assert_eq!(std::fs::read(&shared_path).unwrap(), b"replacement-secret");
+        assert_eq!(acl_bytes(dir.path()), parent_acl_secured, "repeated writes keep the private parent DACL");
 
         let missing_parent = dir.path().join("does-not-exist");
         let failure = super::create_private_windows_temp(&missing_parent);

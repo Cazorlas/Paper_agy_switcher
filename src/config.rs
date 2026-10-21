@@ -102,7 +102,7 @@ pub struct UseConfig {
 impl Default for UseConfig {
     fn default() -> Self {
         Self {
-            pool: ScoringPool::Claude,
+            pool: ScoringPool::ThirdParty,
             safety_margin_7d: 20.0,
             team_priority: true,
         }
@@ -113,7 +113,8 @@ impl Default for UseConfig {
 #[serde(rename_all = "lowercase")]
 pub enum ScoringPool {
     #[default]
-    Claude,
+    #[serde(rename = "claude")]
+    ThirdParty,
     Gemini,
 }
 
@@ -291,8 +292,8 @@ mod tests {
     }
 
     #[test]
-    fn scoring_pool_defaults_to_claude_and_accepts_gemini() {
-        assert_eq!(load_from_str("").unwrap().use_cfg.pool, super::ScoringPool::Claude);
+    fn scoring_pool_defaults_to_third_party_and_accepts_gemini() {
+        assert_eq!(load_from_str("").unwrap().use_cfg.pool, super::ScoringPool::ThirdParty);
         assert_eq!(load_from_str("[use]\npool = \"gemini\"\n").unwrap().use_cfg.pool, super::ScoringPool::Gemini);
         assert!(load_from_str("[use]\npool = \"unknown\"\n").is_err());
     }

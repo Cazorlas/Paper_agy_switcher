@@ -45,30 +45,13 @@ struct CacheEntry {
     individual_limit: Option<Box<crate::usage::SpendControlLimit>>,
     #[serde(default)]
     additional_limits: Vec<crate::usage::AdditionalRateLimit>,
-    #[serde(default)]
-    session_reset: Option<crate::claude_api::SessionReset>,
-    #[serde(default)]
-    reset_grants: Option<Vec<crate::claude_api::ResetGrant>>,
-    #[serde(default)]
-    next_reset_grant: Option<String>,
     /// When the usage endpoint last answered for this alias. The status line
     /// refreshes `ts` without it, so this tells when the rest of the reading
-    /// (session reset, per-model windows) needs the endpoint again.
+    /// (per-model windows) needs the endpoint again.
     /// Absent in caches written before it existed: then `ts` stands in.
     #[serde(default)]
     api_ts: Option<u64>,
 }
-
-/// Last answer of the profile endpoint for one alias.
-#[derive(Serialize, Deserialize, Clone)]
-struct ProfileEntry {
-    /// When the endpoint was last asked (unix seconds), failures included.
-    checked_at: i64,
-    subscription_status: Option<String>,
-}
-
-/// The profile status is asked for at most this often per alias.
-const PROFILE_STATUS_TTL_SECS: i64 = 6 * 3600;
 
 #[derive(Serialize, Deserialize, Default)]
 struct CacheFile {
@@ -76,12 +59,6 @@ struct CacheFile {
     /// Tracks the last time each profile was selected by `use` (unix seconds).
     #[serde(default)]
     last_used: HashMap<String, i64>,
-    /// Per alias: the usage endpoint must not be called before this instant
-    /// (unix milliseconds), set from a 429 Retry-After.
-    #[serde(default)]
-    retry_until_ms: HashMap<String, i64>,
-    #[serde(default)]
-    profiles: HashMap<String, ProfileEntry>,
 }
 
 fn cache_path() -> Result<PathBuf> {
@@ -199,9 +176,9 @@ fn to_entry(u: &UsageInfo) -> CacheEntry {
         rate_limit_reached_type: u.rate_limit_reached_type.clone(),
         individual_limit: u.individual_limit.clone(),
         additional_limits: u.additional_limits.clone(),
-        session_reset: u.session_reset.clone(),
-        reset_grants: u.reset_grants.clone(),
-        next_reset_grant: u.next_reset_grant.clone(),
+
+
+
         api_ts: None,
     }
 }
@@ -241,27 +218,10 @@ fn from_entry(e: &CacheEntry) -> UsageInfo {
         individual_limit: e.individual_limit.clone(),
         additional_limits: e.additional_limits.clone(),
         subscription_status: None,
-        session_reset: e.session_reset.clone(),
-        reset_grants: e.reset_grants.clone(),
-        next_reset_grant: e.next_reset_grant.clone(),
+
+
+
     }
-}
-
-/// The cached usage of `alias` with its subscription status filled in.
-fn usage_of(cache: &CacheFile, alias: &str) -> Option<UsageInfo> {
-    let mut usage = from_entry(cache.entries.get(alias)?);
-    usage.subscription_status = cache
-        .profiles
-        .get(alias)
-        .and_then(|profile| profile.subscription_status.clone());
-    Some(usage)
-}
-
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// Get cached usage for an alias if within TTL.
@@ -277,7 +237,7 @@ pub fn get(alias: &str) -> Option<UsageInfo> {
         {
             return Ok(None);
         }
-        Ok(usage_of(&cache, alias))
+        Ok(cache.entries.get(alias).map(from_entry))
     }) {
         Ok(value) => value,
         Err(err) => {
@@ -287,25 +247,13 @@ pub fn get(alias: &str) -> Option<UsageInfo> {
     }
 }
 
-/// The last usage stored for an alias, however old.
-pub fn last_good(alias: &str) -> Option<UsageInfo> {
-    match with_cache_lock(|| Ok(usage_of(&load_cache(), alias))) {
-        Ok(value) => value,
-        Err(err) => {
-            tracing::warn!("Failed to read cache for {alias}: {err}");
-            None
-        }
-    }
-}
-
-/// Store usage result in cache. A good reading ends any rate-limit pause.
+/// Store usage result in cache.
 pub fn put(alias: &str, usage: &UsageInfo) {
     if let Err(err) = with_cache_lock(|| {
         let mut cache = load_cache();
         let mut entry = to_entry(usage);
         entry.api_ts = Some(entry.ts);
         cache.entries.insert(alias.to_string(), entry);
-        cache.retry_until_ms.remove(alias);
         save_cache(&cache)
     }) {
         tracing::warn!("Failed to write cache: {err}");
@@ -314,68 +262,6 @@ pub fn put(alias: &str, usage: &UsageInfo) {
 
 /// How often an alias fed by the status line still asks the usage endpoint.
 const ENDPOINT_REFRESH_SECS: u64 = 15 * 60;
-/// Milliseconds left of the rate-limit pause of `alias`, when one is running.
-pub fn pause_left_ms(alias: &str) -> Option<i64> {
-    match with_cache_lock(|| Ok(load_cache().retry_until_ms.get(alias).copied())) {
-        Ok(until) => until.map(|until| until - now_millis()).filter(|left| *left > 0),
-        Err(err) => {
-            tracing::warn!("Failed to read rate-limit pause for {alias}: {err}");
-            None
-        }
-    }
-}
-
-/// Do not call the usage endpoint for `alias` for the next `wait_ms`.
-pub fn pause_for_ms(alias: &str, wait_ms: i64) {
-    if let Err(err) = with_cache_lock(|| {
-        let mut cache = load_cache();
-        cache.retry_until_ms.insert(alias.to_string(), now_millis().saturating_add(wait_ms));
-        save_cache(&cache)
-    }) {
-        tracing::warn!("Failed to write rate-limit pause: {err}");
-    }
-}
-
-/// True when the profile status of `alias` was never asked for or is older than 6 h.
-pub fn profile_status_due(alias: &str) -> bool {
-    match with_cache_lock(|| Ok(load_cache().profiles.get(alias).map(|p| p.checked_at))) {
-        Ok(Some(checked)) => now_secs() as i64 - checked >= PROFILE_STATUS_TTL_SECS,
-        Ok(None) => true,
-        Err(_) => false,
-    }
-}
-
-/// Record a profile-endpoint attempt. `status` is the new subscription status
-/// on success; `None` (a failure) keeps the previous one.
-pub fn put_profile_status(alias: &str, status: Option<String>) {
-    if let Err(err) = with_cache_lock(|| {
-        let mut cache = load_cache();
-        let previous = cache.profiles.get(alias).and_then(|p| p.subscription_status.clone());
-        cache.profiles.insert(
-            alias.to_string(),
-            ProfileEntry {
-                checked_at: now_secs() as i64,
-                subscription_status: status.or(previous),
-            },
-        );
-        save_cache(&cache)
-    }) {
-        tracing::warn!("Failed to write profile status: {err}");
-    }
-}
-
-/// The cached subscription status of `alias`, however old.
-pub fn profile_status(alias: &str) -> Option<String> {
-    with_cache_lock(|| {
-        Ok(load_cache()
-            .profiles
-            .get(alias)
-            .and_then(|profile| profile.subscription_status.clone()))
-    })
-    .ok()
-    .flatten()
-}
-
 /// Move every record keyed by `old` over to `new`. Returns whether anything moved.
 fn migrate_alias(cache: &mut CacheFile, old: &str, new: &str) -> bool {
     // A profile can have been used but never fetched, so each map is checked.
@@ -386,14 +272,6 @@ fn migrate_alias(cache: &mut CacheFile, old: &str, new: &str) -> bool {
     }
     if let Some(ts) = cache.last_used.remove(old) {
         cache.last_used.insert(new.to_string(), ts);
-        changed = true;
-    }
-    if let Some(until) = cache.retry_until_ms.remove(old) {
-        cache.retry_until_ms.insert(new.to_string(), until);
-        changed = true;
-    }
-    if let Some(profile) = cache.profiles.remove(old) {
-        cache.profiles.insert(new.to_string(), profile);
         changed = true;
     }
     changed
@@ -452,46 +330,6 @@ mod tests {
         assert_eq!(usage.primary.unwrap().used_percent, Some(25.0));
         assert!(usage.secondary.is_none());
         assert!(!usage.account_limited);
-    }
-
-    #[test]
-    fn cache_entry_written_before_reset_ids_still_loads() {
-        let entry: CacheEntry = serde_json::from_value(json!({
-            "ts": 123,
-            "primary_used": 25.0,
-            "primary_reset": 456,
-            "secondary_used": null,
-            "secondary_reset": null,
-            "reset_grants": [{
-                "label": "launch reset",
-                "resets_left": 1,
-                "resets_total": 1,
-                "ends_at": "2099-10-22T16:00:00+00:00",
-                "usable_now": true
-            }]
-        }))
-        .unwrap();
-        let usage = from_entry(&entry);
-        let grants = usage.reset_grants.expect("grants kept");
-        assert_eq!(grants.len(), 1);
-        assert_eq!(grants[0].id, "");
-        assert!(!grants[0].paused);
-        assert!(grants[0].clears.is_empty());
-        assert_eq!(usage.next_reset_grant, None);
-    }
-
-    #[test]
-    fn cache_round_trip_keeps_the_next_reset_grant() {
-        let usage = UsageInfo {
-            fetched_at: Some(10),
-            next_reset_grant: Some("g2".to_string()),
-            ..Default::default()
-        };
-        let restored = from_entry(&to_entry(&usage));
-        assert_eq!(restored.next_reset_grant.as_deref(), Some("g2"));
-        let json = serde_json::to_string(&to_entry(&usage)).unwrap();
-        let entry: CacheEntry = serde_json::from_str(&json).unwrap();
-        assert_eq!(from_entry(&entry).next_reset_grant.as_deref(), Some("g2"));
     }
 
     #[test]

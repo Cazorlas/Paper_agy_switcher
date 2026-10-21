@@ -1,6 +1,6 @@
 mod mock;
 
-use agy_switch::claude_usage::AccountInfo;
+use agy_switch::usage::AccountInfo;
 use agy_switch::usage::{self, UsageInfo, WindowUsage};
 use mock::scenarios;
 

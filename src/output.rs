@@ -33,6 +33,24 @@ pub struct JsonError {
 
 // ── Conversion helpers ───────────────────────────────────
 
+/// Relative reset for quota tables, using one snapshot of local now per table.
+pub(crate) fn format_reset_relative(ts: Option<i64>, now: i64) -> String {
+    let Some(ts) = ts.filter(|ts| Local.timestamp_opt(*ts, 0).single().is_some()) else {
+        return "--".into();
+    };
+    if ts < now {
+        return "now".into();
+    }
+    let secs = ts.saturating_sub(now);
+    if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h{}m", secs / 3600, secs % 3600 / 60)
+    } else {
+        format!("{}d{}h", secs / 86400, secs % 86400 / 3600)
+    }
+}
+
 /// Shared timestamp formatter: "2h30m (14:30)" or "1d12h (03-27 14:30)"
 pub fn format_reset_time(ts: i64) -> String {
     let now = Local::now();
@@ -255,6 +273,19 @@ fn progress_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quota_reset_relative_boundaries() {
+        let now = 1_800_000_000;
+        for (seconds, expected) in [
+            (0, "0m"), (59 * 60, "59m"), (2 * 3600 + 13 * 60, "2h13m"),
+            (86400, "1d0h"), (5 * 86400 + 4 * 3600, "5d4h"), (-1, "now"),
+        ] {
+            assert_eq!(format_reset_relative(Some(now + seconds), now), expected);
+        }
+        assert_eq!(format_reset_relative(None, now), "--");
+        assert_eq!(format_reset_relative(Some(i64::MAX), now), "--");
+    }
 
     #[test]
     fn already_reported_errors_are_not_reported_twice() {

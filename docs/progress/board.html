@@ -37,8 +37,10 @@ Windows Credential Manager entry <code>gemini:antigravity</code>; quota comes fr
 <tr><td>T3</td><td class="s ok">done</td><td>OAuth refresh and Cloud Code quota client, mapped to the usage model. 18 locked tests green (A fixed one test bug the worker found).</td></tr>
 <tr><td>T4</td><td class="s ok">done</td><td>Commands (login, list, use, auto, launch agy, doctor, rename/delete/restore) on the new store and API; scoring pool setting (Claude/GPT or Gemini). 20 locked CLI tests green; full suite 330 passed (run by A).</td></tr>
 <tr><td>T5</td><td class="s ok">done</td><td>TUI on Antigravity (accounts table with Claude/GPT and Gemini pools, switch, scoring pool setting); Claude modules and their tests removed. Full suite 244 passed (run by A).</td></tr>
-<tr><td>T6</td><td class="s todo">todo</td><td>README, notices.</td></tr>
-<tr><td>Live</td><td class="s todo">todo</td><td>Switch and run <code>agy -p</code>; restore the original login.</td></tr>
+<tr><td>T6</td><td class="s ok">done</td><td><code>add</code>: own Google sign-in (loopback, state, PKCE) like Cockpit, saves to a profile without touching the live login; running-agy detection, <code>use --restart-agy</code>, <code>auto</code> reports overwrites. 250 tests green.</td></tr>
+<tr><td>Live</td><td class="s ok">done</td><td>Two real accounts: <code>add acc2</code> via browser, <code>use acc2</code> then a new <code>agy -p</code> logged in as acc2, <code>use main</code> restored account 1 (agy answered OK). Found: running agy processes write their account back on token refresh (20:26 rewrite observed).</td></tr>
+<tr><td>T7</td><td class="s ok">done</td><td>Aligned numbered <code>list</code> table with plan labels and relative resets (checked live); README in English and Vietnamese. 253 tests green.</td></tr>
+<tr><td>Next</td><td class="s todo">owner</td><td>Merge to main, push, first release (tag + npm publish) - waits for the owner. Check GitHub push protection on the public OAuth client secret constant.</td></tr>
 </table>
 </article>
 </main>

@@ -1,7 +1,7 @@
 {
   "name": "paper-agy-switch",
   "version": "0.1.0",
-  "description": "Google Antigravity (agy CLI and desktop) account switcher - multi-profile manager with quota dashboard",
+  "description": "Multi-account switcher for Google Antigravity, with a quota dashboard for the agy CLI and Antigravity desktop app.",
   "license": "Apache-2.0",
   "repository": "github:Cazorlas/Paper_agy_switcher",
   "bin": { "paper-agy-switch": "bin/cli.js" },

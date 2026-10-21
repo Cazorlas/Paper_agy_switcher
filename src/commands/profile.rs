@@ -68,20 +68,59 @@ fn usage_json(value: &usage::UsageInfo) -> Value {
     }})
 }
 
-fn window_text(window: Option<&usage::WindowUsage>) -> String {
+fn plan_label(tier: &str) -> &str {
+    match tier {
+        "g1-pro-tier" => "Pro",
+        "g1-ultra-tier" => "Ultra",
+        "free-tier" => "Free",
+        other => other,
+    }
+}
+
+fn window_text(window: Option<&usage::WindowUsage>, now: i64) -> String {
     window.map(|w| {
-        let used = w.used_percent.map(|v| color::usage_pct(&format!("{v:.0}%"), v)).unwrap_or_else(|| "--".into());
-        let reset = w.resets_at.and_then(|at| chrono::DateTime::from_timestamp(at, 0))
-            .map(|at| at.to_rfc3339()).unwrap_or_else(|| "--".into());
-        format!("{used} (resets {reset})")
+        let used = w.used_percent.map(|v| format!("{v:.0}%")).unwrap_or_else(|| "--".into());
+        let reset = output::format_reset_relative(w.resets_at, now);
+        if reset == "--" { format!("{used} --") } else { format!("{used} ↻{reset}") }
     }).unwrap_or_else(|| "--".into())
+}
+
+struct ListRow {
+    cells: [String; 10],
+    percentages: [Option<f64>; 4],
+}
+
+fn list_table(rows: &[ListRow]) -> String {
+    let headers = ["", "#", "Alias", "Email", "Plan", "Claude/GPT 5h", "Claude/GPT week", "Gemini 5h", "Gemini week", "Status"];
+    let widths: Vec<_> = (0..headers.len()).map(|column| {
+        std::iter::once(headers[column]).chain(rows.iter().map(|row| row.cells[column].as_str()))
+            .map(|cell| ratatui::text::Line::raw(cell).width()).max().unwrap_or(0)
+    }).collect();
+    let mut lines = vec![headers.iter().enumerate().map(|(i, cell)| {
+        super::render::padded_cell(cell, widths[i], color::bold)
+    }).collect::<Vec<_>>().join("  ").trim_end().to_string()];
+    for row in rows {
+        let line = row.cells.iter().enumerate().map(|(i, cell)| {
+            super::render::padded_cell(cell, widths[i], |padded| match i {
+                0 => color::active(padded),
+                2 => color::bold(padded),
+                5..=8 => row.percentages[i - 5].map(|pct| color::usage_pct(padded, pct))
+                    .unwrap_or_else(|| color::dim(padded)),
+                9 if !cell.is_empty() => color::error(padded),
+                _ => padded.to_string(),
+            })
+        }).collect::<Vec<_>>().join("  ");
+        lines.push(line.trim_end().to_string());
+    }
+    lines.join("\n")
 }
 
 pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
     let store = agy_usage::store()?;
     let active = store.active_alias()?;
     let mut rows = Vec::new();
-    if !json_mode { println!("  Alias  Email  Tier  Claude/GPT 5h | weekly  Gemini 5h | weekly"); }
+    let mut table_rows = Vec::new();
+    let now = chrono::Local::now().timestamp();
     let profiles = agy_usage::profiles()?;
     let mut progress = (!json_mode).then(|| output::ProgressReporter::new("Refreshing usage", profiles.len()));
     for (index, p) in profiles.into_iter().enumerate() {
@@ -97,19 +136,33 @@ pub(crate) async fn list_cmd(force: bool, json_mode: bool) -> Result<()> {
             rows.push(json!({"alias":p.alias,"email":p.email,"active":is_active,"tier":tier,
                 "usage":value.as_ref().map(usage_json),"error":error}));
         } else {
-            print!("{} {}  {}  {}", if is_active { color::active("*") } else { " ".into() }, color::bold(&p.alias),
-                p.email.as_deref().unwrap_or("unknown email"), tier.unwrap_or("--"));
-            if let Some(value) = &value {
-                let gemini = usage::gemini_pool(value);
-                print!("  {} | {}  {} | {}", window_text(value.primary.as_ref()), window_text(value.secondary.as_ref()),
-                    window_text(gemini.and_then(|p| p.primary.as_ref())), window_text(gemini.and_then(|p| p.secondary.as_ref())));
-            }
-            if let Some(error) = error { print!("  {error}"); }
-            println!();
+            let gemini = value.as_ref().and_then(usage::gemini_pool);
+            let windows = [value.as_ref().and_then(|u| u.primary.as_ref()), value.as_ref().and_then(|u| u.secondary.as_ref()),
+                gemini.and_then(|p| p.primary.as_ref()), gemini.and_then(|p| p.secondary.as_ref())];
+            table_rows.push(ListRow {
+                cells: [if is_active { "*".into() } else { "".into() }, (index + 1).to_string(), p.alias,
+                    p.email.unwrap_or_else(|| "unknown email".into()), plan_label(tier.unwrap_or("--")).into(),
+                    window_text(windows[0], now), window_text(windows[1], now),
+                    window_text(windows[2], now), window_text(windows[3], now), error.unwrap_or_default()],
+                percentages: windows.map(|w| w.and_then(|w| w.used_percent)),
+            });
         }
     }
-    if json_mode { output::print_json(&rows); }
+    if let Some(progress) = &mut progress { progress.finish(); }
+    if json_mode { output::print_json(&rows); } else { println!("{}", list_table(&table_rows)); }
     Ok(())
+}
+
+#[cfg(test)]
+mod list_tests {
+    use super::*;
+
+    #[test]
+    fn plan_labels_keep_unknown_ids() {
+        for (tier, label) in [("g1-pro-tier", "Pro"), ("g1-ultra-tier", "Ultra"), ("free-tier", "Free"), ("future-tier", "future-tier"), ("--", "--")] {
+            assert_eq!(plan_label(tier), label);
+        }
+    }
 }
 
 pub(crate) fn rename_cmd(old: &str, new: &str, json_mode: bool) -> Result<()> {

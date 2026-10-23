@@ -307,6 +307,8 @@ fn table_text_widths(
     widths
 }
 
+const QUOTA_HEADERS: [&str; 4] = ["Claude/GPT 5h", "Claude/GPT weekly", "Gemini 5h", "Gemini weekly"];
+
 fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
     let mut title = format!(" Accounts ({}) sort:{} quota: {} ", app.accounts.len(), app.sort_mode.as_str(), crate::config::get().quota.source.label());
     if let Some(search) = &app.search { title.push_str(&format!(" /{} ", search.query)); }
@@ -330,6 +332,8 @@ fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
     let widths = table_text_widths(area.width.saturating_sub(50), &aliases, &emails, &tiers, true);
     let mut rows = Vec::new();
     let mut cards = Vec::new();
+    // Each quota column is as wide as its longest text, so "100% (resets MM-DD HH:MM)" is never clipped.
+    let mut quota_widths = QUOTA_HEADERS.map(|h| h.chars().count() as u16);
     for (view, &index) in app.view_indices.iter().enumerate() {
         let entry = &app.accounts[index];
         let marker = if app.marked.contains(&entry.alias) { ">" } else if entry.is_current { "*" } else { " " };
@@ -347,6 +351,9 @@ fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
             UsageStatus::Idle => ([None; 4], "--".to_owned()),
         };
         let quota: Vec<_> = windows.iter().map(|window| crate::usage::window_text(*window)).collect();
+        for (width, text) in quota_widths.iter_mut().zip(&quota) {
+            *width = (*width).max(text.chars().count() as u16);
+        }
         let status_style = if matches!(entry.usage, UsageStatus::Error(_)) { base().fg(C_RED) } else { base().fg(DIM) };
         let mut cells = vec![Cell::from(marker).style(style), Cell::from(entry.alias.clone()),
             Cell::from(emails[view]), Cell::from(tiers[view]).style(plan_color(Some(tiers[view]), selected))];
@@ -368,11 +375,13 @@ fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from(""),
         ]);
     }
+    let quota_total: u16 = quota_widths.iter().sum();
     let constraints = [Constraint::Length(1), Constraint::Length(widths.alias),
         Constraint::Length(widths.email), Constraint::Length(widths.plan),
-        Constraint::Length(22), Constraint::Length(22), Constraint::Length(22), Constraint::Length(22),
+        Constraint::Length(quota_widths[0]), Constraint::Length(quota_widths[1]),
+        Constraint::Length(quota_widths[2]), Constraint::Length(quota_widths[3]),
         Constraint::Min(16)];
-    let natural = widths.alias + widths.email + widths.plan + 115;
+    let natural = widths.alias + widths.email + widths.plan + quota_total + 27;
     if natural > area.width {
         let inner = block.inner(area);
         f.render_widget(block, area);
@@ -383,7 +392,8 @@ fn render_account_table(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(Paragraph::new(lines).style(base()), inner);
         app.hitmap.account_list = None;
     } else {
-        let header = Row::new(["", "Alias", "Email", "Tier", "Claude/GPT 5h", "Claude/GPT weekly", "Gemini 5h", "Gemini weekly", "Status / error"])
+        let [h5, hw, g5, gw] = QUOTA_HEADERS;
+        let header = Row::new(["", "Alias", "Email", "Tier", h5, hw, g5, gw, "Status / error"])
             .style(base().fg(C_CYAN).add_modifier(Modifier::BOLD));
         let mut state = TableState::default().with_selected(app.selected);
         f.render_stateful_widget(Table::new(rows, constraints).header(header).block(block)

@@ -1,6 +1,6 @@
 # agy / Cloud Code protocol notes
 
-What `paper-agy-switch` relies on when it reads quota. Captured from agy 1.4.4 (2026-10-22) by pointing
+What `paper-agy-switch` relies on when it reads quota. Captured from agy 1.4.4 (2026-10-22), re-checked against agy 1.5.12 (2026-11-19) by pointing
 `CLOUD_CODE_URL` at a local recorder, then replaying the same calls with the same token.
 
 ## Hosts
@@ -27,14 +27,14 @@ All calls are `POST <base>/v1internal:<method>` with `Authorization: Bearer <acc
 
 ### agy CLI (`[quota] source = "cli"`, default)
 
-- User agent: `antigravity/cli/<agy version> (aidev_client; os_type=<windows|darwin|linux>; arch=<amd64|arm64>; cl=1003595037; auth_method=consumer)`.
-  `<agy version>` comes from `agy --version` on PATH (cached per process); it falls back to `1.4.4`.
+- User agent: `antigravity/cli/<agy version> (aidev_client; os_type=<windows|darwin|linux>; arch=<amd64|arm64>; cl=1024904911; auth_method=consumer)`. The `cl` value is the changelist of the fallback agy version (1.5.12; 1.4.4 sent `cl=1003595037`), so an older agy on PATH now sends a newer `cl`; the daily host accepted both on 2026-11-19.
+  `<agy version>` comes from `agy --version` on PATH (cached per process); it falls back to `1.5.12`.
 - `loadCodeAssist` body, exactly: `{"metadata":{"ideType":"ANTIGRAVITY"}}`.
 - Daily host only. There is no fallback to prod, because prod would silently return the IDE quota.
 
 ### Antigravity IDE (`[quota] source = "ide"`)
 
-- User agent: `antigravity/1.20.5 windows/amd64`.
+- User agent: `antigravity/1.20.5 windows/amd64`. Antigravity desktop 2.15.0 still ships the same language server (built 2026-09-18), so this was not re-captured; it still returned quota on 2026-11-19.
 - `loadCodeAssist` body: `{"metadata":{"ideName":"antigravity","ideType":"ANTIGRAVITY","ideVersion":"1.20.5","pluginVersion":"<this tool>","platform":"WINDOWS_AMD64","updateChannel":"stable","pluginType":"GEMINI"},"mode":"FULL_ELIGIBILITY_CHECK"}`.
 - Prod host first, then daily on a network error, 404 or 5xx (a 429 stops at once).
 

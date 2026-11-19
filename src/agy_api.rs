@@ -236,7 +236,7 @@ pub fn detect_agy_version() -> String {
             .find_map(|word| semver::Version::parse(word.trim_start_matches('v')).ok())
             .map(|version| version.to_string())
     });
-    detected.unwrap_or_else(|| "1.4.4".into())
+    detected.unwrap_or_else(|| "1.5.12".into())
 }
 
 pub fn cli_user_agent() -> String {
@@ -244,7 +244,7 @@ pub fn cli_user_agent() -> String {
     let version = VERSION.get_or_init(detect_agy_version);
     let os = match std::env::consts::OS { "macos" => "darwin", os => os };
     let arch = match std::env::consts::ARCH { "aarch64" => "arm64", "x86_64" => "amd64", arch => arch };
-    format!("antigravity/cli/{version} (aidev_client; os_type={os}; arch={arch}; cl=1003595037; auth_method=consumer)")
+    format!("antigravity/cli/{version} (aidev_client; os_type={os}; arch={arch}; cl=1024904911; auth_method=consumer)")
 }
 
 pub async fn fetch_quota(

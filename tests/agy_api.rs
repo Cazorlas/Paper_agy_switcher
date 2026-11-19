@@ -415,7 +415,7 @@ fn agy_api_22_version_detection_falls_back_when_agy_is_missing() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let empty = tempfile::tempdir().unwrap();
     let _env = EnvGuard::set(&[("PATH", Some(empty.path().to_str().unwrap()))]);
-    assert_eq!(detect_agy_version(), "1.4.4");
+    assert_eq!(detect_agy_version(), "1.5.12");
 }
 
 #[test]
